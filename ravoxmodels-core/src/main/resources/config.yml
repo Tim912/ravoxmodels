@@ -16,6 +16,11 @@ resourcepack:
   enabled: true
   force: true
   auto_apply_on_join: true
+  join_send_delay_ticks: 40
+  retry_delay_ticks: 60
+  max_download_retries: 2
+  tracking_ttl_seconds: 300
+  safety_block_localhost_url: true
   hosted_url: ""
   pack_format: 84
   description: RavoxModels generated pack

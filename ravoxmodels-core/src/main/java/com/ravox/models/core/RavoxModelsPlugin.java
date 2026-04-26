@@ -89,6 +89,7 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
 
         Bukkit.getPluginManager().registerEvents(
                 new ResourcePackListener(
+                        this,
                         resourcePackService,
                         getConfig().getBoolean("resourcepack.auto_apply_on_join", true),
                         resourcePackService.isForce()

@@ -35,6 +35,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -53,6 +56,13 @@ public final class ResourcePackService {
     private final String hostPath;
     private final int packFormat;
     private final String description;
+    private final int joinSendDelayTicks;
+    private final int retryDelayTicks;
+    private final int maxDownloadRetries;
+    private final long trackingTtlMillis;
+    private final boolean safetyBlockLocalhostUrl;
+    private final ConcurrentMap<UUID, DeliveryState> trackedPlayers = new ConcurrentHashMap<>();
+    private volatile boolean localhostWarningShown;
     private HttpServer httpServer;
     private Path activeZip;
     private byte[] activeSha1;
@@ -71,6 +81,11 @@ public final class ResourcePackService {
         this.hostPath = normalizePath(cfg.getString("resourcepack.host.path", "/ravoxmodels/pack.zip"));
         this.packFormat = cfg.getInt("resourcepack.pack_format", 84);
         this.description = cfg.getString("resourcepack.description", "RavoxModels generated pack");
+        this.joinSendDelayTicks = Math.max(0, cfg.getInt("resourcepack.join_send_delay_ticks", 40));
+        this.retryDelayTicks = Math.max(1, cfg.getInt("resourcepack.retry_delay_ticks", 60));
+        this.maxDownloadRetries = Math.max(0, cfg.getInt("resourcepack.max_download_retries", 2));
+        this.trackingTtlMillis = Math.max(10L, cfg.getLong("resourcepack.tracking_ttl_seconds", 300L)) * 1000L;
+        this.safetyBlockLocalhostUrl = cfg.getBoolean("resourcepack.safety_block_localhost_url", true);
         this.packDir = plugin.getDataFolder().toPath().resolve("resourcepack");
     }
 
@@ -86,6 +101,7 @@ public final class ResourcePackService {
         }
         if (!externalUrl.isEmpty()) {
             activeUrl = externalUrl;
+            warnIfLocalhostUrl();
             return;
         }
         if (!hostEnabled) {
@@ -98,6 +114,7 @@ public final class ResourcePackService {
             httpServer.start();
             activeUrl = "http://" + hostPublic + ":" + hostPort + hostPath;
             plugin.getLogger().info("Resourcepack host started at " + activeUrl);
+            warnIfLocalhostUrl();
         } catch (IOException ex) {
             plugin.getLogger().warning("Could not start resourcepack host: " + ex.getMessage());
         }
@@ -149,10 +166,15 @@ public final class ResourcePackService {
     }
 
     public boolean applyToPlayer(Player player) {
-        if (!enabled || activeUrl == null || activeSha1 == null) {
+        if (!enabled || activeUrl == null || activeSha1 == null || player == null) {
+            return false;
+        }
+        if (safetyBlockLocalhostUrl && isLikelyLocalhostUrl(activeUrl)) {
+            warnIfLocalhostUrl();
             return false;
         }
         player.setResourcePack(activeUrl, activeSha1);
+        trackedPlayers.put(player.getUniqueId(), new DeliveryState(System.currentTimeMillis(), 0));
         return true;
     }
 
@@ -168,6 +190,68 @@ public final class ResourcePackService {
 
     public boolean isForce() {
         return force;
+    }
+
+    public int getJoinSendDelayTicks() {
+        return joinSendDelayTicks;
+    }
+
+    public boolean isTracking(Player player) {
+        if (player == null) {
+            return false;
+        }
+        DeliveryState state = trackedPlayers.get(player.getUniqueId());
+        if (state == null) {
+            return false;
+        }
+        if (System.currentTimeMillis() - state.sentAtMillis > trackingTtlMillis) {
+            trackedPlayers.remove(player.getUniqueId());
+            return false;
+        }
+        return true;
+    }
+
+    public void clearTracking(Player player) {
+        if (player != null) {
+            trackedPlayers.remove(player.getUniqueId());
+        }
+    }
+
+    public FailureAction handleFailure(Player player, String statusName) {
+        if (player == null || statusName == null) {
+            return FailureAction.IGNORED;
+        }
+        UUID id = player.getUniqueId();
+        DeliveryState state = trackedPlayers.get(id);
+        if (state == null) {
+            return FailureAction.IGNORED;
+        }
+
+        String normalized = statusName.toUpperCase(Locale.ROOT);
+        if ("DECLINED".equals(normalized)) {
+            trackedPlayers.remove(id);
+            return FailureAction.KICK;
+        }
+
+        int failures = state.downloadFailures + 1;
+        if (failures > maxDownloadRetries) {
+            trackedPlayers.remove(id);
+            return FailureAction.KICK;
+        }
+
+        trackedPlayers.put(id, new DeliveryState(System.currentTimeMillis(), failures));
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            Player online = Bukkit.getPlayer(id);
+            if (online == null || !online.isOnline()) {
+                return;
+            }
+            DeliveryState current = trackedPlayers.get(id);
+            if (current == null || current.downloadFailures != failures) {
+                return;
+            }
+            applyRetry(online, failures);
+        }, retryDelayTicks);
+        return FailureAction.RETRYING;
     }
 
     public String getActiveUrl() {
@@ -351,6 +435,46 @@ public final class ResourcePackService {
             return "/ravoxmodels/pack.zip";
         }
         return path.startsWith("/") ? path : "/" + path;
+    }
+
+    private void applyRetry(Player player, int failures) {
+        if (!enabled || activeUrl == null || activeSha1 == null) {
+            return;
+        }
+        if (safetyBlockLocalhostUrl && isLikelyLocalhostUrl(activeUrl)) {
+            warnIfLocalhostUrl();
+            return;
+        }
+        player.setResourcePack(activeUrl, activeSha1);
+        trackedPlayers.put(player.getUniqueId(), new DeliveryState(System.currentTimeMillis(), failures));
+    }
+
+    private void warnIfLocalhostUrl() {
+        if (localhostWarningShown || activeUrl == null) {
+            return;
+        }
+        if (!isLikelyLocalhostUrl(activeUrl)) {
+            return;
+        }
+        localhostWarningShown = true;
+        plugin.getLogger().warning("Resourcepack URL points to localhost (" + activeUrl + "). Remote players cannot download it.");
+        plugin.getLogger().warning("Set resourcepack.host.public_host to a public domain/IP or set resourcepack.hosted_url.");
+    }
+
+    private static boolean isLikelyLocalhostUrl(String url) {
+        String lower = url.toLowerCase(Locale.ROOT);
+        return lower.contains("://127.0.0.1")
+                || lower.contains("://localhost")
+                || lower.contains("://[::1]");
+    }
+
+    private record DeliveryState(long sentAtMillis, int downloadFailures) {
+    }
+
+    public enum FailureAction {
+        IGNORED,
+        RETRYING,
+        KICK
     }
 
     private final class PackHandler implements HttpHandler {

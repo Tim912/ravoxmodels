@@ -37,6 +37,8 @@ Server deployment:
 - `ravoxmodels-bridge-customore-26.1.jar` (optional)
 - Do **not** load `ravoxmodels-api-26.1.jar` as plugin jar; it is SDK-only for developers.
 - Do not use PlugMan reload/load for RavoxModels; restart Paper.
+- Do not keep `resourcepack.host.public_host: 127.0.0.1` for public servers.
+- Use a reachable domain/IP via `resourcepack.host.public_host` or set `resourcepack.hosted_url`.
 
 ## Core features (`ravoxmodels-core`)
 
