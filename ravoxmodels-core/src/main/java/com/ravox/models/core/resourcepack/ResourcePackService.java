@@ -55,6 +55,8 @@ public final class ResourcePackService {
     private final int hostPort;
     private final String hostPath;
     private final int packFormat;
+    private final int supportedFormatsMin;
+    private final int supportedFormatsMax;
     private final String description;
     private final int joinSendDelayTicks;
     private final int retryDelayTicks;
@@ -80,6 +82,8 @@ public final class ResourcePackService {
         this.hostPort = cfg.getInt("resourcepack.host.port", 8777);
         this.hostPath = normalizePath(cfg.getString("resourcepack.host.path", "/ravoxmodels/pack.zip"));
         this.packFormat = cfg.getInt("resourcepack.pack_format", 84);
+        this.supportedFormatsMin = cfg.getInt("resourcepack.supported_formats_min", packFormat);
+        this.supportedFormatsMax = cfg.getInt("resourcepack.supported_formats_max", packFormat);
         this.description = cfg.getString("resourcepack.description", "RavoxModels generated pack");
         this.joinSendDelayTicks = Math.max(0, cfg.getInt("resourcepack.join_send_delay_ticks", 40));
         this.retryDelayTicks = Math.max(1, cfg.getInt("resourcepack.retry_delay_ticks", 60));
@@ -281,6 +285,12 @@ public final class ResourcePackService {
         Map<String, Object> root = new HashMap<>();
         Map<String, Object> pack = new HashMap<>();
         pack.put("pack_format", packFormat);
+        if (supportedFormatsMin > 0 && supportedFormatsMax >= supportedFormatsMin) {
+            List<Integer> supported = new ArrayList<>(2);
+            supported.add(supportedFormatsMin);
+            supported.add(supportedFormatsMax);
+            pack.put("supported_formats", supported);
+        }
         pack.put("description", description);
         root.put("pack", pack);
         Path packMeta = tempDir.resolve("pack.mcmeta");

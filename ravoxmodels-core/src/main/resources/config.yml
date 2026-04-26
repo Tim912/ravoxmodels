@@ -23,6 +23,8 @@ resourcepack:
   safety_block_localhost_url: true
   hosted_url: ""
   pack_format: 84
+  supported_formats_min: 84
+  supported_formats_max: 32767
   description: RavoxModels generated pack
   host:
     enabled: true
