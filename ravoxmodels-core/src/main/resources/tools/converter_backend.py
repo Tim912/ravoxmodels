@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-elements", type=int, default=1024)
     parser.add_argument("--voxel-grid", type=int, default=30)
     parser.add_argument("--palette-size", type=int, default=32)
-    parser.add_argument("--model-mode", choices=("rendered_cross", "voxel"), default="rendered_cross")
+    parser.add_argument("--model-mode", choices=("rendered_box", "rendered_cross", "voxel"), default="rendered_box")
     parser.add_argument("--strict", action="store_true")
     return parser.parse_args()
 
@@ -280,11 +280,42 @@ def run_blender(
         "--model-mode",
         model_mode,
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True, env=blender_environment(output_glb.parent))
     output = (proc.stdout or "") + "\n" + (proc.stderr or "")
     if proc.returncode != 0:
         return False, f"Blender conversion failed: {safe_short(output)}"
     return True, safe_short(output)
+
+
+def blender_environment(work_dir: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    home = (work_dir / "blender-home").resolve()
+    config = home / ".config"
+    cache = home / ".cache"
+    data = home / ".local" / "share"
+    scripts = home / "scripts"
+    temp = home / "tmp"
+    for directory in (home, config, cache, data, scripts, temp):
+        directory.mkdir(parents=True, exist_ok=True)
+
+    if platform.system().lower() == "windows":
+        if not Path(env.get("USERPROFILE", "")).is_absolute():
+            env["USERPROFILE"] = str(home)
+        env.setdefault("TEMP", str(temp))
+        env.setdefault("TMP", str(temp))
+    else:
+        # Systemd/hosting services sometimes start Minecraft without a valid HOME.
+        # Blender 3.x fails early in that case, before our import script can run.
+        env["HOME"] = str(home)
+        env["XDG_CONFIG_HOME"] = str(config)
+        env["XDG_CACHE_HOME"] = str(cache)
+        env["XDG_DATA_HOME"] = str(data)
+        env["TMPDIR"] = str(temp)
+
+    env["BLENDER_USER_CONFIG"] = str(config / "blender")
+    env["BLENDER_USER_SCRIPTS"] = str(scripts)
+    env["BLENDER_USER_DATAFILES"] = str(data / "blender")
+    return env
 
 
 def find_blender(explicit: str) -> str | None:

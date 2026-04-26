@@ -305,7 +305,12 @@ public final class ResourcePackService {
         String modelJson = "assets/" + modelNamespace + "/models/item/" + modelId + ".json";
         String texturePrefix = "assets/" + modelNamespace + "/textures/item/" + modelId;
         String frontTexture = texturePrefix + "_front.png";
+        String backTexture = texturePrefix + "_back.png";
+        String leftTexture = texturePrefix + "_left.png";
+        String rightTexture = texturePrefix + "_right.png";
         String sideTexture = texturePrefix + "_side.png";
+        String topTexture = texturePrefix + "_top.png";
+        String bottomTexture = texturePrefix + "_bottom.png";
         String paletteTexture = texturePrefix + "_palette.png";
         String materialDefinition = "assets/minecraft/items/" + material + ".json";
         String legacyMaterialModel = "assets/minecraft/models/item/" + material + ".json";
@@ -324,9 +329,6 @@ public final class ResourcePackService {
             addZipCheck(lines, zip, "PackMeta", "pack.mcmeta");
             addZipCheck(lines, zip, "ItemDefinition", itemDefinition);
             addZipCheck(lines, zip, "ModelJson", modelJson);
-            addZipCheck(lines, zip, "FrontTexture", frontTexture);
-            addZipCheck(lines, zip, "SideTexture", sideTexture);
-            addZipCheck(lines, zip, "PaletteTexture", paletteTexture);
             addZipCheck(lines, zip, "MaterialDefinition", materialDefinition);
             addZipCheck(lines, zip, "LegacyMaterialModel", legacyMaterialModel);
 
@@ -339,6 +341,14 @@ public final class ResourcePackService {
             ZipEntry modelEntry = zip.getEntry(modelJson);
             if (modelEntry != null) {
                 String json = readZipEntry(zip, modelEntry);
+                addTextureCheckIfRelevant(lines, zip, "FrontTexture", frontTexture, json, modelId + "_front");
+                addTextureCheckIfRelevant(lines, zip, "BackTexture", backTexture, json, modelId + "_back");
+                addTextureCheckIfRelevant(lines, zip, "LeftTexture", leftTexture, json, modelId + "_left");
+                addTextureCheckIfRelevant(lines, zip, "RightTexture", rightTexture, json, modelId + "_right");
+                addTextureCheckIfRelevant(lines, zip, "SideTexture", sideTexture, json, modelId + "_side");
+                addTextureCheckIfRelevant(lines, zip, "TopTexture", topTexture, json, modelId + "_top");
+                addTextureCheckIfRelevant(lines, zip, "BottomTexture", bottomTexture, json, modelId + "_bottom");
+                addTextureCheckIfRelevant(lines, zip, "PaletteTexture", paletteTexture, json, modelId + "_palette");
                 lines.add("ModelElementCount: " + countOccurrences(json, "\"from\""));
                 lines.add("ModelUsesPalette: " + json.contains("_palette"));
             }
@@ -599,6 +609,12 @@ public final class ResourcePackService {
 
     private static void addZipCheck(List<String> lines, ZipFile zip, String label, String path) {
         lines.add(label + ": " + (zip.getEntry(path) != null ? "ok " : "missing ") + path);
+    }
+
+    private static void addTextureCheckIfRelevant(List<String> lines, ZipFile zip, String label, String path, String modelJson, String token) {
+        if (modelJson.contains(token) || zip.getEntry(path) != null) {
+            addZipCheck(lines, zip, label, path);
+        }
     }
 
     private static String readZipEntry(ZipFile zip, ZipEntry entry) throws IOException {

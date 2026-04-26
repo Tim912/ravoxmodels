@@ -78,6 +78,7 @@ public final class CommandConverterBackend implements ConverterBackend {
         for (String candidateShell : shellCandidates) {
             ProcessBuilder builder = processBuilderFor(command, candidateShell);
             builder.directory(modelDir.toFile());
+            configureConverterEnvironment(builder, request);
             builder.redirectErrorStream(true);
             builder.redirectOutput(converterOutput.toFile());
             try {
@@ -125,6 +126,7 @@ public final class CommandConverterBackend implements ConverterBackend {
         String normalized = raw;
         if (normalized.contains("converter_backend.py") && (!normalized.contains("--max-elements")
                 || !raw.contains("--model-mode")
+                || raw.contains("--model-mode rendered_cross")
                 || (raw.contains("--max-elements 256") && raw.contains("--voxel-grid 20"))
                 || (raw.contains("--max-elements 512") && raw.contains("--voxel-grid 24"))
                 || raw.contains("{plugin_dir}/tools/converter_backend.py")
@@ -145,7 +147,7 @@ public final class CommandConverterBackend implements ConverterBackend {
                 + " --max-elements 1024"
                 + " --voxel-grid 30"
                 + " --palette-size 32"
-                + " --model-mode rendered_cross"
+                + " --model-mode rendered_box"
                 + " --strict";
     }
 
@@ -164,6 +166,40 @@ public final class CommandConverterBackend implements ConverterBackend {
             case "sh" -> new ProcessBuilder("sh", "-lc", command);
             default -> new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command);
         };
+    }
+
+    private void configureConverterEnvironment(ProcessBuilder builder, ConversionRequest request) {
+        Path home = request.pluginDataDirectory().toAbsolutePath().normalize().resolve("runtime-home");
+        Path config = home.resolve(".config");
+        Path cache = home.resolve(".cache");
+        Path data = home.resolve(".local").resolve("share");
+        Path scripts = home.resolve("scripts");
+        Path temp = home.resolve("tmp");
+        try {
+            Files.createDirectories(config);
+            Files.createDirectories(cache);
+            Files.createDirectories(data);
+            Files.createDirectories(scripts);
+            Files.createDirectories(temp);
+        } catch (IOException ex) {
+            plugin.getLogger().warning("Could not prepare converter runtime home: " + ex.getMessage());
+        }
+
+        var env = builder.environment();
+        if (isWindowsRuntime()) {
+            env.putIfAbsent("USERPROFILE", home.toString());
+            env.putIfAbsent("TEMP", temp.toString());
+            env.putIfAbsent("TMP", temp.toString());
+        } else {
+            env.put("HOME", home.toString());
+            env.put("XDG_CONFIG_HOME", config.toString());
+            env.put("XDG_CACHE_HOME", cache.toString());
+            env.put("XDG_DATA_HOME", data.toString());
+            env.put("TMPDIR", temp.toString());
+        }
+        env.put("BLENDER_USER_CONFIG", config.resolve("blender").toString());
+        env.put("BLENDER_USER_SCRIPTS", scripts.toString());
+        env.put("BLENDER_USER_DATAFILES", data.resolve("blender").toString());
     }
 
     private List<String> shellCandidates() {
