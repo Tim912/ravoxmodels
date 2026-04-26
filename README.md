@@ -12,6 +12,8 @@ Standalone Paper plugin for model import/runtime orchestration with API and opti
 
 ## Build
 
+Requires `Java 25` (for Paper `26.1.x` API).
+
 ```bash
 mvn -q clean package
 ```
