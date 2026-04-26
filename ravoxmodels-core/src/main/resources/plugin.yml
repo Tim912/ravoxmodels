@@ -5,8 +5,9 @@ api-version: "1.20"
 authors: [Ravox]
 commands:
   ravoxmodels:
-    description: RavoxModels command
+    description: RavoxModels admin and runtime commands
     usage: /ravoxmodels
+    permission: ravoxmodels.admin
 permissions:
   ravoxmodels.admin:
     description: Admin access to RavoxModels

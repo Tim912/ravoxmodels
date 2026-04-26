@@ -19,5 +19,21 @@ mvn -q clean package
 ## Roadmap (v26.1)
 
 - Project scaffold and API contract
-- Core plugin bootstrap and command stubs
+- Runtime command surface for model control
+- Resourcepack build/serve/force flow
+- License framework (startup check + heartbeat + grace)
 - Optional bridge module bootstrap
+
+## Commands
+
+- `/ravoxmodels help`
+- `/ravoxmodels import <filename.glb|filename.fbx>`
+- `/ravoxmodels spawn <modelId>`
+- `/ravoxmodels play <handleUuid> <animationKey> [loop]`
+- `/ravoxmodels transition <handleUuid> <fromKey> <toKey> <blendMs> [loop]`
+- `/ravoxmodels despawn <handleUuid>`
+- `/ravoxmodels list`
+- `/ravoxmodels pack <build|info|force>`
+- `/ravoxmodels license <status|refresh>`
+
+Animation keys are normalized to `rvxmodels.*` by default.

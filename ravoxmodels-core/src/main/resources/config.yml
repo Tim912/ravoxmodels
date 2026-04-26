@@ -1,5 +1,8 @@
 version: 26.1
 
+namespace:
+  prefix: rvxmodels
+
 import:
   directory: plugins/RavoxModels/import
   accepted_extensions:
@@ -9,8 +12,22 @@ import:
 resourcepack:
   enabled: true
   force: true
+  auto_apply_on_join: true
   hosted_url: ""
-  sha1: ""
+  host:
+    enabled: true
+    public_host: 127.0.0.1
+    port: 8777
+    path: /ravoxmodels/pack.zip
+
+license:
+  enabled: false
+  api_url: ""
+  key: ""
+  product: ravoxmodels
+  server_id: ""
+  heartbeat_minutes: 30
+  grace_hours: 48
 
 limits:
   max_triangles: 15000
