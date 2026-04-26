@@ -34,6 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-elements", type=int, default=1024)
     parser.add_argument("--voxel-grid", type=int, default=30)
     parser.add_argument("--palette-size", type=int, default=32)
+    parser.add_argument("--model-mode", choices=("rendered_cross", "voxel"), default="rendered_cross")
     return parser.parse_args(argv)
 
 
@@ -73,6 +74,166 @@ def export_glb(path: Path) -> None:
         export_lights=False,
         export_cameras=False,
     )
+
+
+def blender_bounds(objects: list[bpy.types.Object]) -> tuple[Vector, Vector]:
+    minimum = Vector((math.inf, math.inf, math.inf))
+    maximum = Vector((-math.inf, -math.inf, -math.inf))
+    found = False
+    for obj in objects:
+        for corner in obj.bound_box:
+            point = obj.matrix_world @ Vector(corner)
+            minimum.x = min(minimum.x, point.x)
+            minimum.y = min(minimum.y, point.y)
+            minimum.z = min(minimum.z, point.z)
+            maximum.x = max(maximum.x, point.x)
+            maximum.y = max(maximum.y, point.y)
+            maximum.z = max(maximum.z, point.z)
+            found = True
+    if not found:
+        return Vector((-0.5, -0.5, -0.5)), Vector((0.5, 0.5, 0.5))
+    return minimum, maximum
+
+
+def look_at(obj: bpy.types.Object, target: Vector) -> None:
+    direction = target - obj.location
+    obj.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
+
+
+def setup_render_scene() -> None:
+    scene = bpy.context.scene
+    scene.render.film_transparent = True
+    scene.render.resolution_x = 768
+    scene.render.resolution_y = 768
+    scene.render.image_settings.file_format = "PNG"
+    scene.render.image_settings.color_mode = "RGBA"
+    scene.view_settings.view_transform = "Standard"
+    scene.view_settings.look = "Medium High Contrast"
+    scene.view_settings.exposure = 0.0
+    scene.view_settings.gamma = 1.0
+
+    try:
+        scene.render.engine = "BLENDER_EEVEE"
+        scene.eevee.use_gtao = True
+        scene.eevee.gtao_distance = 3
+        scene.eevee.gtao_factor = 1.2
+    except Exception:
+        pass
+
+    light_data = bpy.data.lights.new("RavoxModels_Key", type="AREA")
+    light_data.energy = 650
+    light_data.size = 4.0
+    light = bpy.data.objects.new("RavoxModels_Key", light_data)
+    bpy.context.collection.objects.link(light)
+    light.location = (3.5, -5.0, 6.0)
+
+    fill_data = bpy.data.lights.new("RavoxModels_Fill", type="POINT")
+    fill_data.energy = 80
+    fill = bpy.data.objects.new("RavoxModels_Fill", fill_data)
+    bpy.context.collection.objects.link(fill)
+    fill.location = (-4.0, 3.0, 4.0)
+
+
+def render_view(path: Path, objects: list[bpy.types.Object], view: str) -> None:
+    minimum, maximum = blender_bounds(objects)
+    center = (minimum + maximum) * 0.5
+    extent = maximum - minimum
+    distance = max(extent.x, extent.y, extent.z, 1.0) * 3.0
+
+    if view == "side":
+        location = Vector((maximum.x + distance, center.y, center.z))
+        ortho_scale = max(extent.y, extent.z, 0.1) * 1.16
+    else:
+        location = Vector((center.x, minimum.y - distance, center.z))
+        ortho_scale = max(extent.x, extent.z, 0.1) * 1.16
+
+    camera_data = bpy.data.cameras.new("RavoxModels_Camera_" + view)
+    camera = bpy.data.objects.new("RavoxModels_Camera_" + view, camera_data)
+    bpy.context.collection.objects.link(camera)
+    camera.location = location
+    camera_data.type = "ORTHO"
+    camera_data.ortho_scale = ortho_scale
+    look_at(camera, center)
+
+    bpy.context.scene.camera = camera
+    path.parent.mkdir(parents=True, exist_ok=True)
+    bpy.context.scene.render.filepath = str(path)
+    bpy.ops.render.render(write_still=True)
+
+
+def model_plane(
+    start: list[float],
+    end: list[float],
+    faces: dict[str, str],
+    rotation: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    element: dict[str, Any] = {
+        "from": start,
+        "to": end,
+        "shade": False,
+        "faces": {
+            face: {"uv": [0, 0, 16, 16], "texture": texture}
+            for face, texture in faces.items()
+        },
+    }
+    if rotation is not None:
+        element["rotation"] = rotation
+    return element
+
+
+def write_rendered_cross_resourcepack(resourcepack_dir: Path, namespace: str, model_id: str, objects: list[bpy.types.Object]) -> int:
+    model_dir = resourcepack_dir / "assets" / namespace / "models" / "item"
+    item_dir = resourcepack_dir / "assets" / namespace / "items"
+    texture_dir = resourcepack_dir / "assets" / namespace / "textures" / "item"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    item_dir.mkdir(parents=True, exist_ok=True)
+    texture_dir.mkdir(parents=True, exist_ok=True)
+
+    setup_render_scene()
+    render_view(texture_dir / f"{model_id}_front.png", objects, "front")
+    render_view(texture_dir / f"{model_id}_side.png", objects, "side")
+
+    thin = 0.04
+    elements = [
+        model_plane([0, 0, 8 - thin], [16, 16, 8 + thin], {"north": "#front", "south": "#front"}),
+        model_plane([8 - thin, 0, 0], [8 + thin, 16, 16], {"east": "#side", "west": "#side"}),
+        model_plane(
+            [0, 0, 8 - thin],
+            [16, 16, 8 + thin],
+            {"north": "#front", "south": "#front"},
+            {"origin": [8, 8, 8], "axis": "y", "angle": 45},
+        ),
+        model_plane(
+            [0, 0, 8 - thin],
+            [16, 16, 8 + thin],
+            {"north": "#front", "south": "#front"},
+            {"origin": [8, 8, 8], "axis": "y", "angle": -45},
+        ),
+    ]
+
+    model_json = {
+        "credit": "Generated by RavoxModels Blender rendered-cross converter",
+        "textures": {
+            "front": f"{namespace}:item/{model_id}_front",
+            "side": f"{namespace}:item/{model_id}_side",
+        },
+        "elements": elements,
+        "display": {
+            "fixed": {"rotation": [0, 180, 0], "translation": [0, 0, 0], "scale": [2.2, 2.2, 2.2]},
+            "ground": {"rotation": [0, 0, 0], "translation": [0, 3, 0], "scale": [1.0, 1.0, 1.0]},
+            "gui": {"rotation": [30, 225, 0], "translation": [0, 0, 0], "scale": [0.8, 0.8, 0.8]},
+        },
+    }
+    (model_dir / f"{model_id}.json").write_text(json.dumps(model_json, indent=2), encoding="utf-8")
+
+    item_json = {
+        "model": {
+            "type": "minecraft:model",
+            "model": f"{namespace}:item/{model_id}",
+        }
+    }
+    (item_dir / f"{model_id}.json").write_text(json.dumps(item_json, indent=2), encoding="utf-8")
+    return len(elements)
 
 
 def sanitize_resource_name(value: str) -> str:
@@ -479,6 +640,20 @@ def write_runtime_manifest(path: Path, grid: int, elements: int, palette: int, a
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
 
+def write_rendered_cross_manifest(path: Path, elements: int, animations: list[dict[str, Any]]) -> None:
+    manifest = {
+        "renderer": "rendered_cross_planes",
+        "element_count": elements,
+        "animations": animations,
+        "notes": [
+            "The source model is rendered into transparent front/side textures and displayed on crossed planes.",
+            "This keeps visual detail much better than voxel cuboids in vanilla Minecraft, but it is not true mesh geometry.",
+            "Animation metadata is preserved; full skeletal playback requires a runtime bone/display pipeline.",
+        ],
+    }
+    path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+
 def main() -> int:
     args = parse_args()
     src = Path(args.input).resolve()
@@ -492,15 +667,24 @@ def main() -> int:
 
     clear_scene()
     import_any(src)
-    export_glb(out)
 
     objects = mesh_objects()
+    animations = animation_manifest()
+    try:
+        export_glb(out)
+    except Exception:
+        pass
+
+    if args.model_mode == "rendered_cross":
+        element_count = write_rendered_cross_resourcepack(resourcepack_dir, namespace, model_id, objects)
+        write_rendered_cross_manifest(out.parent / "minecraft-model-report.json", element_count, animations)
+        return 0
+
     minimum, maximum = collect_bounds(objects)
     samples = collect_surface_samples(objects, max_elements)
     grid, cells = build_cells(samples, minimum, maximum, voxel_grid, max_elements)
     palette = assign_palette(cells, palette_size)
     elements = build_elements(cells, grid, palette_size)
-    animations = animation_manifest()
 
     write_resourcepack(resourcepack_dir, namespace, model_id, elements, palette_size, palette)
     write_runtime_manifest(out.parent / "minecraft-model-report.json", grid, len(elements), len(palette), animations)

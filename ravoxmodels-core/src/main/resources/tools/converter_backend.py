@@ -44,6 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-elements", type=int, default=1024)
     parser.add_argument("--voxel-grid", type=int, default=30)
     parser.add_argument("--palette-size", type=int, default=32)
+    parser.add_argument("--model-mode", choices=("rendered_cross", "voxel"), default="rendered_cross")
     parser.add_argument("--strict", action="store_true")
     return parser.parse_args()
 
@@ -248,6 +249,7 @@ def run_blender(
     max_elements: int,
     voxel_grid: int,
     palette_size: int,
+    model_mode: str,
 ) -> tuple[bool, str]:
     bridge = Path(__file__).with_name("converter_blender_bridge.py")
     if not bridge.exists():
@@ -275,6 +277,8 @@ def run_blender(
         str(voxel_grid),
         "--palette-size",
         str(palette_size),
+        "--model-mode",
+        model_mode,
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     output = (proc.stdout or "") + "\n" + (proc.stderr or "")
@@ -381,6 +385,7 @@ def main() -> int:
             args.max_elements,
             args.voxel_grid,
             args.palette_size,
+            args.model_mode,
         )
         if not ok:
             report = {
