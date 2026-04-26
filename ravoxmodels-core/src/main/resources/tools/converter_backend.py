@@ -332,6 +332,19 @@ def safe_short(text: str) -> str:
     return t[:400] + "..."
 
 
+def has_generated_pack_assets(resourcepack_dir: Path, namespace: str, model_id: str) -> bool:
+    model_json = resourcepack_dir / "assets" / namespace / "models" / "item" / f"{model_id}.json"
+    item_json = resourcepack_dir / "assets" / namespace / "items" / f"{model_id}.json"
+    texture_dir = resourcepack_dir / "assets" / namespace / "textures" / "item"
+    if not model_json.exists() or not item_json.exists() or not texture_dir.exists():
+        return False
+    prefix = f"{model_id}_"
+    for candidate in texture_dir.glob("*.png"):
+        if candidate.name.startswith(prefix) or candidate.stem == model_id:
+            return True
+    return False
+
+
 def main() -> int:
     args = parse_args()
     src = Path(args.input).resolve()
@@ -391,8 +404,36 @@ def main() -> int:
         (out_dir / "conversion-report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
         return 1
 
-    stats, inspect_warnings = inspect_glb(normalized_glb)
-    warnings.extend(inspect_warnings)
+    pack_assets_ok = has_generated_pack_assets(resourcepack_dir, args.namespace, args.model)
+    if not pack_assets_ok:
+        report = {
+            "success": False if args.strict else True,
+            "message": "Blender finished but no resourcepack assets were generated.",
+            "animations": [],
+            "artifacts": list_artifacts(out_dir),
+            "warnings": warnings + ["Missing generated model/item/texture files in runtime/resourcepack."],
+        }
+        (out_dir / "conversion-report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+        return 1 if args.strict else 0
+
+    try:
+        stats, inspect_warnings = inspect_glb(normalized_glb)
+        warnings.extend(inspect_warnings)
+    except Exception as exc:
+        warnings.append("Post-inspection failed: " + safe_short(str(exc)))
+        stats = {
+            "mesh_count": 0,
+            "node_count": 0,
+            "material_count": 0,
+            "texture_count": 0,
+            "animation_count": 0,
+            "triangles_estimated": 0,
+            "vertices_estimated": 0,
+            "max_skin_joints": 0,
+            "max_texture_size": 0,
+            "animation_names": [],
+            "material_names": [],
+        }
 
     stats_path = out_dir / "model_stats.json"
     stats_path.write_text(json.dumps(stats, indent=2), encoding="utf-8")
