@@ -15,6 +15,7 @@ import argparse
 import base64
 import json
 import os
+import platform
 import shutil
 import struct
 import subprocess
@@ -38,7 +39,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--format", required=True)
+    parser.add_argument("--namespace", default="rvxmodels")
     parser.add_argument("--blender", default="")
+    parser.add_argument("--max-elements", type=int, default=1024)
+    parser.add_argument("--voxel-grid", type=int, default=28)
+    parser.add_argument("--palette-size", type=int, default=16)
     parser.add_argument("--strict", action="store_true")
     return parser.parse_args()
 
@@ -233,7 +238,17 @@ def inspect_glb(glb_path: Path) -> tuple[dict[str, Any], list[str]]:
     return stats, warnings
 
 
-def run_blender(input_path: Path, output_glb: Path, blender: str) -> tuple[bool, str]:
+def run_blender(
+    input_path: Path,
+    output_glb: Path,
+    resourcepack_dir: Path,
+    blender: str,
+    model_id: str,
+    namespace: str,
+    max_elements: int,
+    voxel_grid: int,
+    palette_size: int,
+) -> tuple[bool, str]:
     bridge = Path(__file__).with_name("converter_blender_bridge.py")
     if not bridge.exists():
         return False, "converter_blender_bridge.py missing"
@@ -248,6 +263,18 @@ def run_blender(input_path: Path, output_glb: Path, blender: str) -> tuple[bool,
         str(input_path),
         "--output",
         str(output_glb),
+        "--resourcepack",
+        str(resourcepack_dir),
+        "--model",
+        model_id,
+        "--namespace",
+        namespace,
+        "--max-elements",
+        str(max_elements),
+        "--voxel-grid",
+        str(voxel_grid),
+        "--palette-size",
+        str(palette_size),
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     output = (proc.stdout or "") + "\n" + (proc.stderr or "")
@@ -269,7 +296,33 @@ def find_blender(explicit: str) -> str | None:
     found = shutil.which("blender")
     if found:
         return found
+    if platform.system().lower() == "windows":
+        roots = [
+            os.environ.get("ProgramFiles", r"C:\Program Files"),
+            os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+            os.environ.get("LOCALAPPDATA", ""),
+        ]
+        candidates: list[Path] = []
+        for root in roots:
+            if not root:
+                continue
+            base = Path(root)
+            candidates.extend(base.glob("Blender Foundation/Blender*/blender.exe"))
+            candidates.extend(base.glob("Programs/Blender Foundation/Blender*/blender.exe"))
+        existing = sorted((p for p in candidates if p.exists()), reverse=True)
+        if existing:
+            return str(existing[0])
     return None
+
+
+def list_artifacts(out_dir: Path) -> list[str]:
+    artifacts: list[str] = []
+    if not out_dir.exists():
+        return artifacts
+    for path in sorted(out_dir.rglob("*")):
+        if path.is_file():
+            artifacts.append(path.relative_to(out_dir.parent).as_posix())
+    return artifacts
 
 
 def safe_short(text: str) -> str:
@@ -286,37 +339,47 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     fmt = args.format.lower()
     warnings: list[str] = []
-    artifacts: list[str] = []
 
     normalized_glb = out_dir / "normalized.glb"
+    resourcepack_dir = out_dir / "resourcepack"
     try:
-        if fmt == "glb" and src.suffix.lower() == ".glb":
-            shutil.copy2(src, normalized_glb)
-        else:
-            blender_bin = find_blender(args.blender)
-            if not blender_bin:
-                message = "No Blender binary found. Set --blender or env RAVOX_BLENDER."
-                report = {
-                    "success": False if args.strict else True,
-                    "message": message,
-                    "animations": [],
-                    "artifacts": [],
-                    "warnings": [message, "Fallback mode used."],
-                }
-                (out_dir / "conversion-report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-                return 1 if args.strict else 0
-            ok, blender_msg = run_blender(src, normalized_glb, blender_bin)
-            if not ok:
-                report = {
-                    "success": False if args.strict else True,
-                    "message": blender_msg,
-                    "animations": [],
-                    "artifacts": [],
-                    "warnings": [blender_msg, "Fallback mode used."],
-                }
-                (out_dir / "conversion-report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-                return 1 if args.strict else 0
-            warnings.append("Blender: " + blender_msg)
+        blender_bin = find_blender(args.blender)
+        if not blender_bin:
+            message = "No Blender binary found. Install Blender, put blender.exe in PATH, or set RAVOX_BLENDER."
+            if fmt == "glb" and src.suffix.lower() == ".glb" and not args.strict:
+                shutil.copy2(src, normalized_glb)
+            report = {
+                "success": False if args.strict else True,
+                "message": message,
+                "animations": [],
+                "artifacts": list_artifacts(out_dir),
+                "warnings": [message, "No Minecraft model assets were generated."],
+            }
+            (out_dir / "conversion-report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+            return 1 if args.strict else 0
+
+        ok, blender_msg = run_blender(
+            src,
+            normalized_glb,
+            resourcepack_dir,
+            blender_bin,
+            args.model,
+            args.namespace,
+            args.max_elements,
+            args.voxel_grid,
+            args.palette_size,
+        )
+        if not ok:
+            report = {
+                "success": False if args.strict else True,
+                "message": blender_msg,
+                "animations": [],
+                "artifacts": list_artifacts(out_dir),
+                "warnings": [blender_msg, "No Minecraft model assets were generated."],
+            }
+            (out_dir / "conversion-report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+            return 1 if args.strict else 0
+        warnings.append("Blender: " + blender_msg)
     except Exception as exc:
         report = {
             "success": False,
@@ -333,8 +396,6 @@ def main() -> int:
 
     stats_path = out_dir / "model_stats.json"
     stats_path.write_text(json.dumps(stats, indent=2), encoding="utf-8")
-    artifacts.append(f"runtime/{normalized_glb.name}")
-    artifacts.append(f"runtime/{stats_path.name}")
 
     skeleton = {
         "model_id": args.model,
@@ -343,16 +404,15 @@ def main() -> int:
     }
     skeleton_path = out_dir / "skeleton.json"
     skeleton_path.write_text(json.dumps(skeleton, indent=2), encoding="utf-8")
-    artifacts.append(f"runtime/{skeleton_path.name}")
 
     anim_manifest = {"animations": stats["animation_names"]}
     anim_path = out_dir / "animations.json"
     anim_path.write_text(json.dumps(anim_manifest, indent=2), encoding="utf-8")
-    artifacts.append(f"runtime/{anim_path.name}")
+    artifacts = list_artifacts(out_dir)
 
     report = {
         "success": True,
-        "message": "conversion_ok",
+        "message": "minecraft_resourcepack_assets_generated",
         "animations": stats["animation_names"],
         "artifacts": artifacts,
         "warnings": warnings,

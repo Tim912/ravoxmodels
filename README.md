@@ -90,6 +90,7 @@ Server deployment:
 - `transition <handleUuid> <fromKey> <toKey> <blendMs> [loop]`
 - `state <handleUuid> <state>`
 - `despawn <handleUuid>`
+- `kill <handleUuid|*>`
 - `list`
 - `pack build`
 - `pack info`
@@ -128,12 +129,21 @@ If `converter.command.enabled: true`, RavoxModels executes your command from `co
 
 Default config already points to bundled script:
 
-- `python {plugin_dir}/tools/converter_backend.py ...`
+- `py -3 {plugin_dir}/tools/converter_backend.py ...`
 
-For FBX normalization, install Blender and either:
+For real GLB/FBX conversion, install Blender and either:
 
 - put `blender` in PATH, or
 - set environment variable `RAVOX_BLENDER` to blender executable path
+- on Windows, the bundled converter also searches `C:\Program Files\Blender Foundation\Blender*\blender.exe`
+
+The bundled Blender bridge writes vanilla Minecraft resourcepack assets into:
+
+- `{runtime_dir}/resourcepack/assets/<namespace>/models/item/<model_id>.json`
+- `{runtime_dir}/resourcepack/assets/<namespace>/items/<model_id>.json`
+- `{runtime_dir}/resourcepack/assets/<namespace>/textures/item/<model_id>_palette.png`
+
+Vanilla Minecraft does not support arbitrary triangle meshes as item models. The bundled backend converts GLB/FBX surfaces into a bounded cuboid approximation so the model is visible without a client mod. Skeletal animation names and timing metadata are preserved, but full bone animation playback needs a dedicated runtime display-entity bone pipeline.
 
 Supported placeholders:
 
@@ -144,6 +154,7 @@ Supported placeholders:
 - `{plugin_dir}`
 - `{runtime_dir}`
 - `{format}`
+- `{namespace}`
 
 Optional output file (recommended): `{runtime_dir}/conversion-report.json`
 
@@ -152,9 +163,9 @@ Example:
 ```json
 {
   "success": true,
-  "message": "ok",
+  "message": "minecraft_resourcepack_assets_generated",
   "animations": ["idle", "attack"],
-  "artifacts": ["runtime/mesh.bin", "runtime/anim.bin"],
+  "artifacts": ["runtime/resourcepack/assets/rvxmodels/models/item/example.json"],
   "warnings": []
 }
 ```
@@ -167,5 +178,5 @@ Uses threshold mapping from bridge `config.yml` to trigger animation changes by 
 
 ## Notes
 
-- This `26.1` codebase now includes a real converter backend flow (command + report + runtime artifacts).
+- This `26.1` codebase now includes a real Blender-backed converter flow (normalized GLB + generated vanilla resourcepack assets + report).
 - Best results still depend on source-asset quality and explicit import limits (triangles/bones/textures).

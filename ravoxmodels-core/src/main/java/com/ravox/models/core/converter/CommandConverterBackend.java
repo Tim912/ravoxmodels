@@ -21,6 +21,7 @@ public final class CommandConverterBackend implements ConverterBackend {
     private final boolean enabled;
     private final String glbCommand;
     private final String fbxCommand;
+    private final String namespace;
     private final String shell;
     private final int timeoutSeconds;
     private final boolean strictExitCode;
@@ -29,10 +30,12 @@ public final class CommandConverterBackend implements ConverterBackend {
     public CommandConverterBackend(JavaPlugin plugin, FileConfiguration config) {
         this.plugin = plugin;
         this.enabled = config.getBoolean("converter.command.enabled", false);
-        this.glbCommand = config.getString("converter.command.glb", "").trim();
-        this.fbxCommand = config.getString("converter.command.fbx", "").trim();
+        this.namespace = normalizeNamespace(config.getString("resourcepack.model_namespace", "rvxmodels"));
+        this.glbCommand = normalizeBundledCommand(config.getString("converter.command.glb", "").trim(), "glb");
+        this.fbxCommand = normalizeBundledCommand(config.getString("converter.command.fbx", "").trim(), "fbx");
         this.shell = config.getString("converter.command.shell", "powershell").trim().toLowerCase(Locale.ROOT);
-        this.timeoutSeconds = Math.max(1, config.getInt("converter.command.timeout_seconds", 180));
+        int minimumTimeout = (glbCommand.contains("converter_backend.py") || fbxCommand.contains("converter_backend.py")) ? 900 : 1;
+        this.timeoutSeconds = Math.max(minimumTimeout, config.getInt("converter.command.timeout_seconds", 180));
         this.strictExitCode = config.getBoolean("converter.command.strict_exit_code", true);
         this.requireReport = config.getBoolean("converter.command.require_report", false);
     }
@@ -113,6 +116,27 @@ public final class CommandConverterBackend implements ConverterBackend {
         };
     }
 
+    private String normalizeBundledCommand(String raw, String format) {
+        if (raw.contains("converter_backend.py") && !raw.contains("--max-elements")) {
+            plugin.getLogger().info("Upgrading legacy bundled converter command for " + format + " at runtime.");
+            return defaultBundledCommand();
+        }
+        return raw;
+    }
+
+    private static String defaultBundledCommand() {
+        return "py -3 {plugin_dir}/tools/converter_backend.py"
+                + " --input {input}"
+                + " --output {output}"
+                + " --model {model_id}"
+                + " --format {format}"
+                + " --namespace {namespace}"
+                + " --max-elements 1024"
+                + " --voxel-grid 28"
+                + " --palette-size 16"
+                + " --strict";
+    }
+
     private ProcessBuilder processBuilderFor(String command) {
         return switch (shell) {
             case "cmd" -> new ProcessBuilder("cmd.exe", "/c", command);
@@ -129,7 +153,26 @@ public final class CommandConverterBackend implements ConverterBackend {
                 .replace("{model_dir}", quote(request.modelDirectory().toString()))
                 .replace("{plugin_dir}", quote(request.pluginDataDirectory().toString()))
                 .replace("{runtime_dir}", quote(request.runtimeDirectory().toString()))
+                .replace("{namespace}", namespace)
                 .replace("{format}", request.format().name().toLowerCase(Locale.ROOT));
+    }
+
+    private static String normalizeNamespace(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "rvxmodels";
+        }
+        String lower = raw.toLowerCase(Locale.ROOT).trim();
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < lower.length(); i++) {
+            char c = lower.charAt(i);
+            boolean valid = (c >= 'a' && c <= 'z')
+                    || (c >= '0' && c <= '9')
+                    || c == '_'
+                    || c == '-'
+                    || c == '.';
+            out.append(valid ? c : '_');
+        }
+        return out.isEmpty() ? "rvxmodels" : out.toString();
     }
 
     private ConversionResult parseReport(Path reportPath, int exitCode, String output) {

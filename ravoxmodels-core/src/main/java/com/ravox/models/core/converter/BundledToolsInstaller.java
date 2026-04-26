@@ -6,7 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
 
 public final class BundledToolsInstaller {
     private final JavaPlugin plugin;
@@ -23,16 +23,17 @@ public final class BundledToolsInstaller {
     private void installOne(String resourcePath, boolean overwrite) {
         Path target = plugin.getDataFolder().toPath().resolve(resourcePath.replace('/', java.io.File.separatorChar)).normalize();
         try {
-            if (Files.exists(target) && !overwrite) {
-                return;
-            }
             Files.createDirectories(target.getParent());
             try (InputStream in = plugin.getResource(resourcePath)) {
                 if (in == null) {
                     plugin.getLogger().warning("Bundled tool missing in jar: " + resourcePath);
                     return;
                 }
-                Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+                byte[] bundled = in.readAllBytes();
+                if (Files.exists(target) && !overwrite && Arrays.equals(Files.readAllBytes(target), bundled)) {
+                    return;
+                }
+                Files.write(target, bundled);
             }
             target.toFile().setReadable(true, false);
             target.toFile().setWritable(true, true);

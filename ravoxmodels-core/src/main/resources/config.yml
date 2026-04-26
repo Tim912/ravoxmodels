@@ -48,17 +48,17 @@ runtime:
   item_material: STICK
 
 converter:
-  strict: false
+  strict: true
   command:
     enabled: true
     shell: powershell
-    timeout_seconds: 180
+    timeout_seconds: 900
     strict_exit_code: true
     require_report: false
-    # Placeholders: {input} {output} {model_id} {model_dir} {plugin_dir} {runtime_dir} {format}
-    glb: "python {plugin_dir}/tools/converter_backend.py --input {input} --output {output} --model {model_id} --format {format}"
+    # Placeholders: {input} {output} {model_id} {model_dir} {plugin_dir} {runtime_dir} {format} {namespace}
+    glb: "py -3 {plugin_dir}/tools/converter_backend.py --input {input} --output {output} --model {model_id} --format {format} --namespace {namespace} --max-elements 1024 --voxel-grid 28 --palette-size 16 --strict"
     # fbx can be separate command or same script with --format fbx
-    fbx: "python {plugin_dir}/tools/converter_backend.py --input {input} --output {output} --model {model_id} --format {format}"
+    fbx: "py -3 {plugin_dir}/tools/converter_backend.py --input {input} --output {output} --model {model_id} --format {format} --namespace {namespace} --max-elements 1024 --voxel-grid 28 --palette-size 16 --strict"
 
 tools:
   install_bundled_converter: true

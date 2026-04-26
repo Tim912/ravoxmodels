@@ -377,7 +377,7 @@ public final class ResourcePackService {
             Map<String, Number> predicate = new HashMap<>();
             predicate.put("custom_model_data", model.getCustomModelData());
             override.put("predicate", predicate);
-            override.put("model", "rvxmodels:item/" + model.getId());
+            override.put("model", modelNamespace + ":item/" + model.getId());
             overrides.add(override);
         }
         root.put("overrides", overrides);

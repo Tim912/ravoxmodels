@@ -9,7 +9,9 @@ public final class ConverterPipeline {
     private final ConverterBackend noopBackend = new NoopConverterBackend();
 
     public ConverterPipeline(JavaPlugin plugin, FileConfiguration config) {
-        this.strict = config.getBoolean("converter.strict", false);
+        this.strict = config.getBoolean("converter.strict", false)
+                || config.getString("converter.command.glb", "").contains("converter_backend.py")
+                || config.getString("converter.command.fbx", "").contains("converter_backend.py");
         this.commandBackend = new CommandConverterBackend(plugin, config);
     }
 
