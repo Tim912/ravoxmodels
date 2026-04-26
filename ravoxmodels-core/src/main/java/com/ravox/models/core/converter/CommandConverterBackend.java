@@ -58,7 +58,8 @@ public final class CommandConverterBackend implements ConverterBackend {
             return ConversionResult.failure(name(), "No converter command configured for format: " + request.format());
         }
 
-        Path runtimeDir = request.runtimeDirectory();
+        Path modelDir = request.modelDirectory().toAbsolutePath().normalize();
+        Path runtimeDir = request.runtimeDirectory().toAbsolutePath().normalize();
         try {
             Files.createDirectories(runtimeDir);
         } catch (IOException ex) {
@@ -71,17 +72,15 @@ public final class CommandConverterBackend implements ConverterBackend {
         int exitCode;
         Process process = null;
         IOException lastLaunchError = null;
-        String usedShell = null;
         List<String> shellCandidates = shellCandidates();
         for (String candidateShell : shellCandidates) {
             ProcessBuilder builder = processBuilderFor(command, candidateShell);
-            builder.directory(request.modelDirectory().toFile());
+            builder.directory(modelDir.toFile());
             builder.redirectErrorStream(true);
             builder.redirectOutput(converterOutput.toFile());
             try {
                 Files.deleteIfExists(converterOutput);
                 process = builder.start();
-                usedShell = candidateShell;
                 boolean completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
                 if (!completed) {
                     process.destroyForcibly();
@@ -204,17 +203,29 @@ public final class CommandConverterBackend implements ConverterBackend {
                 .replace("{plugin_dir}/tools/converter_backend.py", "{converter_backend}")
                 .replace("{plugin_dir}\\tools\\converter_backend.py", "{converter_backend}")
                 .replace("{plugin_dir}/tools/converter_blender_bridge.py", "{converter_blender_bridge}")
-                .replace("{plugin_dir}\\tools\\converter_blender_bridge.py", "{converter_blender_bridge}");
-        Path toolsDir = request.pluginDataDirectory().resolve("tools");
+                .replace("{plugin_dir}\\tools\\converter_blender_bridge.py", "{converter_blender_bridge}")
+                .replace("plugins/RavoxModels/tools/converter_backend.py", "{converter_backend}")
+                .replace("plugins\\RavoxModels\\tools\\converter_backend.py", "{converter_backend}")
+                .replace("tools/converter_backend.py", "{converter_backend}")
+                .replace("tools\\converter_backend.py", "{converter_backend}")
+                .replace("plugins/RavoxModels/tools/converter_blender_bridge.py", "{converter_blender_bridge}")
+                .replace("plugins\\RavoxModels\\tools\\converter_blender_bridge.py", "{converter_blender_bridge}")
+                .replace("tools/converter_blender_bridge.py", "{converter_blender_bridge}")
+                .replace("tools\\converter_blender_bridge.py", "{converter_blender_bridge}");
+        Path pluginDir = request.pluginDataDirectory().toAbsolutePath().normalize();
+        Path modelDir = request.modelDirectory().toAbsolutePath().normalize();
+        Path runtimeDir = request.runtimeDirectory().toAbsolutePath().normalize();
+        Path input = request.sourceFile().toAbsolutePath().normalize();
+        Path toolsDir = pluginDir.resolve("tools").toAbsolutePath().normalize();
         return normalizedTemplate
                 .replace("{converter_backend}", quote(toolsDir.resolve("converter_backend.py").toString()))
                 .replace("{converter_blender_bridge}", quote(toolsDir.resolve("converter_blender_bridge.py").toString()))
-                .replace("{input}", quote(request.sourceFile().toString()))
-                .replace("{output}", quote(request.runtimeDirectory().toString()))
+                .replace("{input}", quote(input.toString()))
+                .replace("{output}", quote(runtimeDir.toString()))
                 .replace("{model_id}", request.modelId())
-                .replace("{model_dir}", quote(request.modelDirectory().toString()))
-                .replace("{plugin_dir}", quote(request.pluginDataDirectory().toString()))
-                .replace("{runtime_dir}", quote(request.runtimeDirectory().toString()))
+                .replace("{model_dir}", quote(modelDir.toString()))
+                .replace("{plugin_dir}", quote(pluginDir.toString()))
+                .replace("{runtime_dir}", quote(runtimeDir.toString()))
                 .replace("{namespace}", namespace)
                 .replace("{format}", request.format().name().toLowerCase(Locale.ROOT));
     }
@@ -301,10 +312,12 @@ public final class CommandConverterBackend implements ConverterBackend {
         if (!Files.exists(runtimeDir)) {
             return out;
         }
+        Path runtimeBase = runtimeDir.toAbsolutePath().normalize();
+        Path modelBase = modelDir.toAbsolutePath().normalize();
         try {
-            Files.walk(runtimeDir)
+            Files.walk(runtimeBase)
                     .filter(Files::isRegularFile)
-                    .forEach(path -> out.add(modelDir.relativize(path).toString().replace('\\', '/')));
+                    .forEach(path -> out.add(modelBase.relativize(path.toAbsolutePath().normalize()).toString().replace('\\', '/')));
         } catch (IOException ignored) {
         }
         return out;
