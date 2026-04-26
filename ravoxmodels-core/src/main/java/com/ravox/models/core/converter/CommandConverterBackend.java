@@ -67,21 +67,31 @@ public final class CommandConverterBackend implements ConverterBackend {
         ProcessBuilder builder = processBuilderFor(command);
         builder.directory(request.modelDirectory().toFile());
         builder.redirectErrorStream(true);
+        Path converterOutput = runtimeDir.resolve("converter-output.log");
+        builder.redirectOutput(converterOutput.toFile());
 
         String output;
         int exitCode;
+        Process process = null;
         try {
-            Process process = builder.start();
+            Files.deleteIfExists(converterOutput);
+            process = builder.start();
             boolean completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
             if (!completed) {
                 process.destroyForcibly();
-                return ConversionResult.failure(name(), "Converter timed out after " + timeoutSeconds + "s");
+                output = readProcessOutput(converterOutput);
+                return ConversionResult.failure(name(), "Converter timed out after " + timeoutSeconds + "s: " + safeShort(output));
             }
             exitCode = process.exitValue();
-            output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException | InterruptedException ex) {
-            Thread.currentThread().interrupt();
+            output = readProcessOutput(converterOutput);
+        } catch (IOException ex) {
             return ConversionResult.failure(name(), "Converter failed to run: " + ex.getMessage());
+        } catch (InterruptedException ex) {
+            if (process != null) {
+                process.destroyForcibly();
+            }
+            Thread.currentThread().interrupt();
+            return ConversionResult.failure(name(), "Converter interrupted.");
         }
 
         Path reportPath = runtimeDir.resolve("conversion-report.json");
@@ -117,22 +127,25 @@ public final class CommandConverterBackend implements ConverterBackend {
     }
 
     private String normalizeBundledCommand(String raw, String format) {
-        if (raw.contains("converter_backend.py") && !raw.contains("--max-elements")) {
-            plugin.getLogger().info("Upgrading legacy bundled converter command for " + format + " at runtime.");
+        if (raw.contains("converter_backend.py") && (!raw.contains("--max-elements")
+                || raw.contains("--max-elements 1024")
+                || raw.contains("{plugin_dir}/tools/converter_backend.py")
+                || raw.contains("{plugin_dir}\\tools\\converter_backend.py"))) {
+            plugin.getLogger().info("Upgrading bundled converter command for " + format + " at runtime.");
             return defaultBundledCommand();
         }
         return raw;
     }
 
     private static String defaultBundledCommand() {
-        return "py -3 {plugin_dir}/tools/converter_backend.py"
+        return "py -3 {converter_backend}"
                 + " --input {input}"
                 + " --output {output}"
                 + " --model {model_id}"
                 + " --format {format}"
                 + " --namespace {namespace}"
-                + " --max-elements 1024"
-                + " --voxel-grid 28"
+                + " --max-elements 256"
+                + " --voxel-grid 20"
                 + " --palette-size 16"
                 + " --strict";
     }
@@ -146,7 +159,15 @@ public final class CommandConverterBackend implements ConverterBackend {
     }
 
     private String interpolate(String template, ConversionRequest request) {
-        return template
+        String normalizedTemplate = template
+                .replace("{plugin_dir}/tools/converter_backend.py", "{converter_backend}")
+                .replace("{plugin_dir}\\tools\\converter_backend.py", "{converter_backend}")
+                .replace("{plugin_dir}/tools/converter_blender_bridge.py", "{converter_blender_bridge}")
+                .replace("{plugin_dir}\\tools\\converter_blender_bridge.py", "{converter_blender_bridge}");
+        Path toolsDir = request.pluginDataDirectory().resolve("tools");
+        return normalizedTemplate
+                .replace("{converter_backend}", quote(toolsDir.resolve("converter_backend.py").toString()))
+                .replace("{converter_blender_bridge}", quote(toolsDir.resolve("converter_blender_bridge.py").toString()))
                 .replace("{input}", quote(request.sourceFile().toString()))
                 .replace("{output}", quote(request.runtimeDirectory().toString()))
                 .replace("{model_id}", request.modelId())
@@ -246,6 +267,17 @@ public final class CommandConverterBackend implements ConverterBackend {
         } catch (IOException ignored) {
         }
         return out;
+    }
+
+    private static String readProcessOutput(Path outputPath) {
+        if (!Files.exists(outputPath)) {
+            return "";
+        }
+        try {
+            return Files.readString(outputPath, StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            return "Could not read converter output: " + ex.getMessage();
+        }
     }
 
     private static String quote(String value) {

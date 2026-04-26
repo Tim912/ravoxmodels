@@ -31,8 +31,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resourcepack", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--namespace", default="rvxmodels")
-    parser.add_argument("--max-elements", type=int, default=1024)
-    parser.add_argument("--voxel-grid", type=int, default=28)
+    parser.add_argument("--max-elements", type=int, default=256)
+    parser.add_argument("--voxel-grid", type=int, default=20)
     parser.add_argument("--palette-size", type=int, default=16)
     return parser.parse_args(argv)
 
@@ -328,29 +328,67 @@ def uv_for_palette(index: int, palette_size: int) -> list[float]:
     return [float(x), float(y), float(x + 1), float(y + 1)]
 
 
+def build_element_box(
+    start_key: tuple[int, int, int],
+    end_key: tuple[int, int, int],
+    palette_index: int,
+    grid: int,
+    palette_size: int,
+) -> dict[str, Any]:
+    unit = 16.0 / float(grid)
+    start = [round(start_key[0] * unit, 4), round(start_key[1] * unit, 4), round(start_key[2] * unit, 4)]
+    end = [round(end_key[0] * unit, 4), round(end_key[1] * unit, 4), round(end_key[2] * unit, 4)]
+    uv = uv_for_palette(palette_index, palette_size)
+    face = {"uv": uv, "texture": "#palette"}
+    return {
+        "from": start,
+        "to": end,
+        "shade": True,
+        "faces": {
+            "north": dict(face),
+            "south": dict(face),
+            "east": dict(face),
+            "west": dict(face),
+            "up": dict(face),
+            "down": dict(face),
+        },
+    }
+
+
 def build_elements(cells: dict[tuple[int, int, int], dict[str, Any]], grid: int, palette_size: int) -> list[dict[str, Any]]:
     elements: list[dict[str, Any]] = []
-    unit = 16.0 / float(grid)
+    remaining = set(cells.keys())
 
-    for key, cell in sorted(cells.items()):
-        x, y, z = key
-        start = [round(x * unit, 4), round(y * unit, 4), round(z * unit, 4)]
-        end = [round((x + 1) * unit, 4), round((y + 1) * unit, 4), round((z + 1) * unit, 4)]
-        uv = uv_for_palette(int(cell.get("palette", 0)), palette_size)
-        face = {"uv": uv, "texture": "#palette"}
-        elements.append({
-            "from": start,
-            "to": end,
-            "shade": True,
-            "faces": {
-                "north": dict(face),
-                "south": dict(face),
-                "east": dict(face),
-                "west": dict(face),
-                "up": dict(face),
-                "down": dict(face),
-            },
-        })
+    def same_palette(key: tuple[int, int, int], palette_index: int) -> bool:
+        return key in remaining and int(cells[key].get("palette", 0)) == palette_index
+
+    while remaining:
+        start = min(remaining)
+        x0, y0, z0 = start
+        palette_index = int(cells[start].get("palette", 0))
+
+        x1 = x0 + 1
+        while same_palette((x1, y0, z0), palette_index):
+            x1 += 1
+
+        z1 = z0 + 1
+        while all(same_palette((x, y0, z1), palette_index) for x in range(x0, x1)):
+            z1 += 1
+
+        y1 = y0 + 1
+        while all(
+            same_palette((x, y1, z), palette_index)
+            for x in range(x0, x1)
+            for z in range(z0, z1)
+        ):
+            y1 += 1
+
+        for x in range(x0, x1):
+            for y in range(y0, y1):
+                for z in range(z0, z1):
+                    remaining.discard((x, y, z))
+
+        elements.append(build_element_box((x0, y0, z0), (x1, y1, z1), palette_index, grid, palette_size))
     return elements
 
 

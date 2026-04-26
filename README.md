@@ -95,6 +95,7 @@ Server deployment:
 - `pack build`
 - `pack info`
 - `pack force <player|*>`
+- `pack diagnose <modelId>`
 - `license status`
 - `license refresh`
 
@@ -127,9 +128,9 @@ All animation keys are normalized to `rvxmodels.*`.
 
 If `converter.command.enabled: true`, RavoxModels executes your command from `config.yml`.
 
-Default config already points to bundled script:
+Default config already points to the bundled script through the safe full-path placeholder:
 
-- `py -3 {plugin_dir}/tools/converter_backend.py ...`
+- `py -3 {converter_backend} ...`
 
 For real GLB/FBX conversion, install Blender and either:
 
@@ -153,8 +154,12 @@ Supported placeholders:
 - `{model_dir}`
 - `{plugin_dir}`
 - `{runtime_dir}`
+- `{converter_backend}`
+- `{converter_blender_bridge}`
 - `{format}`
 - `{namespace}`
+
+The bundled defaults intentionally generate a lower-complexity vanilla item model (`--max-elements 256`, `--voxel-grid 20`). This avoids common client-side resourcepack model failures from overly complex foreign meshes. Increase those values only if your target client accepts the generated model reliably.
 
 Optional output file (recommended): `{runtime_dir}/conversion-report.json`
 

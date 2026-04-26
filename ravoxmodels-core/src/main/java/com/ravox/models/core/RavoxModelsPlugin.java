@@ -180,7 +180,10 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
             return importService.listImportCandidates(args[1], 40);
         }
         if (args.length == 2 && "pack".equalsIgnoreCase(args[0])) {
-            return filterStartsWith(args[1], List.of("build", "info", "force"));
+            return filterStartsWith(args[1], List.of("build", "info", "force", "diagnose"));
+        }
+        if (args.length == 3 && "pack".equalsIgnoreCase(args[0]) && "diagnose".equalsIgnoreCase(args[1])) {
+            return filterStartsWith(args[2], listModelIds());
         }
         if (args.length == 2 && "license".equalsIgnoreCase(args[0])) {
             return filterStartsWith(args[1], List.of("status", "refresh"));
@@ -575,6 +578,23 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
                 sender.sendMessage(ok ? "Pack sent to " + args[2] : "Player not found or no active pack.");
                 return true;
             }
+            case "diagnose" -> {
+                if (args.length < 3) {
+                    sender.sendMessage("Usage: /ravoxmodels pack diagnose <modelId>");
+                    return true;
+                }
+                String id = args[2].toLowerCase(Locale.ROOT);
+                ModelDefinition model = importService.getRegistry().find(id).orElse(null);
+                if (model == null) {
+                    sender.sendMessage("Model not found: " + id);
+                    return true;
+                }
+                sender.sendMessage("Pack diagnose:");
+                for (String line : resourcePackService.diagnoseModel(model)) {
+                    sender.sendMessage("- " + line);
+                }
+                return true;
+            }
             default -> {
                 sender.sendMessage("Unknown pack subcommand.");
                 return true;
@@ -636,7 +656,7 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
         sender.sendMessage("/ravoxmodels despawn <handleUuid>");
         sender.sendMessage("/ravoxmodels kill <handleUuid|*>");
         sender.sendMessage("/ravoxmodels list");
-        sender.sendMessage("/ravoxmodels pack <build|info|force>");
+        sender.sendMessage("/ravoxmodels pack <build|info|force|diagnose>");
         sender.sendMessage("/ravoxmodels license <status|refresh>");
     }
 

@@ -43,6 +43,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import java.util.zip.ZipFile;
 
 public final class ResourcePackService {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -289,6 +290,56 @@ public final class ResourcePackService {
 
     public String getModelNamespace() {
         return modelNamespace;
+    }
+
+    public List<String> diagnoseModel(ModelDefinition model) {
+        List<String> lines = new ArrayList<>();
+        if (model == null) {
+            lines.add("Model: missing");
+            return lines;
+        }
+
+        String modelId = model.getId();
+        String material = normalizeMaterialAssetKey(model.getMaterialKey());
+        String itemDefinition = "assets/" + modelNamespace + "/items/" + modelId + ".json";
+        String modelJson = "assets/" + modelNamespace + "/models/item/" + modelId + ".json";
+        String texturePrefix = "assets/" + modelNamespace + "/textures/item/" + modelId;
+        String materialDefinition = "assets/minecraft/items/" + material + ".json";
+        String legacyMaterialModel = "assets/minecraft/models/item/" + material + ".json";
+
+        lines.add("ModelKey: " + modelNamespace + ":" + modelId);
+        lines.add("Material/CMD: " + model.getMaterialKey() + "/" + model.getCustomModelData());
+        lines.add("Converter: " + (model.isConverterApplied() ? model.getConverterName() : "none"));
+        lines.add("PackFile: " + getActiveZipPath());
+
+        if (activeZip == null || !Files.exists(activeZip)) {
+            lines.add("PackExists: false");
+            return lines;
+        }
+
+        try (ZipFile zip = new ZipFile(activeZip.toFile())) {
+            addZipCheck(lines, zip, "PackMeta", "pack.mcmeta");
+            addZipCheck(lines, zip, "ItemDefinition", itemDefinition);
+            addZipCheck(lines, zip, "ModelJson", modelJson);
+            addZipCheck(lines, zip, "MaterialDefinition", materialDefinition);
+            addZipCheck(lines, zip, "LegacyMaterialModel", legacyMaterialModel);
+
+            long textureCount = zip.stream()
+                    .map(ZipEntry::getName)
+                    .filter(name -> name.startsWith(texturePrefix) && name.endsWith(".png"))
+                    .count();
+            lines.add("TextureFilesForModel: " + textureCount);
+
+            ZipEntry modelEntry = zip.getEntry(modelJson);
+            if (modelEntry != null) {
+                String json = readZipEntry(zip, modelEntry);
+                lines.add("ModelElementCount: " + countOccurrences(json, "\"from\""));
+                lines.add("ModelUsesPalette: " + json.contains("_palette"));
+            }
+        } catch (IOException ex) {
+            lines.add("PackDiagnoseError: " + ex.getMessage());
+        }
+        return lines;
     }
 
     private void writePackMeta(Path tempDir) throws IOException {
@@ -538,6 +589,29 @@ public final class ResourcePackService {
                 return FileVisitResult.CONTINUE;
             }
         });
+    }
+
+    private static void addZipCheck(List<String> lines, ZipFile zip, String label, String path) {
+        lines.add(label + ": " + (zip.getEntry(path) != null ? "ok " : "missing ") + path);
+    }
+
+    private static String readZipEntry(ZipFile zip, ZipEntry entry) throws IOException {
+        try (InputStream in = zip.getInputStream(entry)) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private static int countOccurrences(String value, String token) {
+        if (value == null || value.isEmpty() || token == null || token.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        int index = 0;
+        while ((index = value.indexOf(token, index)) >= 0) {
+            count++;
+            index += token.length();
+        }
+        return count;
     }
 
     private static void zipDirectory(Path sourceDir, Path outputZip) throws IOException {
