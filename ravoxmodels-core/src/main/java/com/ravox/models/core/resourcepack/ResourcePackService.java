@@ -297,8 +297,17 @@ public final class ResourcePackService {
         for (ModelDefinition model : models) {
             String materialAssetKey = normalizeMaterialAssetKey(model.getMaterialKey());
             byMaterial.computeIfAbsent(materialAssetKey, ignored -> new ArrayList<>()).add(model);
-            writeModelJson(rvxModelDir.resolve(model.getId() + ".json"), model.getId());
-            writeTexture(rvxTextureDir.resolve(model.getId() + ".png"), model);
+            copyConverterPackAssets(tempDir, model);
+
+            Path modelTarget = rvxModelDir.resolve(model.getId() + ".json");
+            if (!Files.exists(modelTarget) || !Files.isRegularFile(modelTarget)) {
+                writeModelJson(modelTarget, model.getId());
+            }
+
+            Path textureTarget = rvxTextureDir.resolve(model.getId() + ".png");
+            if (!Files.exists(textureTarget) || !Files.isRegularFile(textureTarget)) {
+                writeTexture(textureTarget, model);
+            }
         }
         for (Map.Entry<String, List<ModelDefinition>> entry : byMaterial.entrySet()) {
             entry.getValue().sort(Comparator.comparingInt(ModelDefinition::getCustomModelData));
@@ -398,6 +407,61 @@ public final class ResourcePackService {
         }
         Files.createDirectories(output.getParent());
         ImageIO.write(image, "png", output.toFile());
+    }
+
+    private void copyConverterPackAssets(Path tempDir, ModelDefinition model) {
+        Path dataFolder = plugin.getDataFolder().toPath();
+        Path modelDirectory = dataFolder.resolve(model.getModelDirectory()).normalize();
+        if (!modelDirectory.startsWith(dataFolder) || !Files.isDirectory(modelDirectory)) {
+            return;
+        }
+
+        Path runtimeDir = modelDirectory.resolve("runtime").normalize();
+        if (!runtimeDir.startsWith(modelDirectory) || !Files.isDirectory(runtimeDir)) {
+            return;
+        }
+
+        Path[] candidates = new Path[]{
+                runtimeDir.resolve("resourcepack").normalize(),
+                runtimeDir.resolve("pack").normalize()
+        };
+        for (Path candidate : candidates) {
+            if (!candidate.startsWith(runtimeDir) || !Files.isDirectory(candidate)) {
+                continue;
+            }
+            try {
+                copyDirectoryContents(candidate, tempDir);
+            } catch (IOException ex) {
+                plugin.getLogger().warning("Could not merge converter pack assets from " + candidate + ": " + ex.getMessage());
+            }
+        }
+    }
+
+    private static void copyDirectoryContents(Path sourceDir, Path targetDir) throws IOException {
+        Files.walkFileTree(sourceDir, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                Path relative = sourceDir.relativize(dir);
+                Path target = targetDir.resolve(relative).normalize();
+                if (!target.startsWith(targetDir)) {
+                    throw new IOException("Invalid converter asset path: " + relative);
+                }
+                Files.createDirectories(target);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Path relative = sourceDir.relativize(file);
+                Path target = targetDir.resolve(relative).normalize();
+                if (!target.startsWith(targetDir)) {
+                    throw new IOException("Invalid converter asset file path: " + relative);
+                }
+                Files.createDirectories(target.getParent());
+                Files.copy(file, target, StandardCopyOption.REPLACE_EXISTING);
+                return FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     private static void zipDirectory(Path sourceDir, Path outputZip) throws IOException {
