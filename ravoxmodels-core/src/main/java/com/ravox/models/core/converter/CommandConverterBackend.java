@@ -124,6 +124,7 @@ public final class CommandConverterBackend implements ConverterBackend {
         if (normalized.contains("converter_backend.py") && (!normalized.contains("--max-elements")
                 || raw.contains("--max-elements 1024")
                 || (raw.contains("--max-elements 256") && raw.contains("--voxel-grid 20"))
+                || (raw.contains("--max-elements 512") && raw.contains("--voxel-grid 24"))
                 || raw.contains("{plugin_dir}/tools/converter_backend.py")
                 || raw.contains("{plugin_dir}\\tools\\converter_backend.py"))) {
             plugin.getLogger().info("Upgrading bundled converter command for " + format + " at runtime.");
@@ -139,9 +140,9 @@ public final class CommandConverterBackend implements ConverterBackend {
                 + " --model {model_id}"
                 + " --format {format}"
                 + " --namespace {namespace}"
-                + " --max-elements 512"
-                + " --voxel-grid 24"
-                + " --palette-size 24"
+                + " --max-elements 1024"
+                + " --voxel-grid 30"
+                + " --palette-size 32"
                 + " --strict";
     }
 

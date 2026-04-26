@@ -31,9 +31,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resourcepack", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--namespace", default="rvxmodels")
-    parser.add_argument("--max-elements", type=int, default=512)
-    parser.add_argument("--voxel-grid", type=int, default=24)
-    parser.add_argument("--palette-size", type=int, default=24)
+    parser.add_argument("--max-elements", type=int, default=1024)
+    parser.add_argument("--voxel-grid", type=int, default=30)
+    parser.add_argument("--palette-size", type=int, default=32)
     return parser.parse_args(argv)
 
 
@@ -239,26 +239,78 @@ def build_cells(
     if not samples:
         return 1, {(0, 0, 0): {"color": [0.75, 0.75, 0.75, 1.0], "count": 1}}
 
-    for grid in range(max(4, voxel_grid), 3, -2):
-        cells: dict[tuple[int, int, int], dict[str, Any]] = {}
-        for point, color in samples:
-            normalized = normalize_point(point, minimum, maximum)
-            key = (
-                min(grid - 1, max(0, int((normalized.x / 16.0) * grid))),
-                min(grid - 1, max(0, int((normalized.y / 16.0) * grid))),
-                min(grid - 1, max(0, int((normalized.z / 16.0) * grid))),
-            )
-            cell = cells.setdefault(key, {"color": [0.0, 0.0, 0.0, 0.0], "count": 0})
-            cell["count"] += 1
-            for channel in range(4):
-                cell["color"][channel] += color[channel]
-        if len(cells) <= max_elements or grid <= 4:
-            if len(cells) > max_elements:
-                selected = sorted(cells.items(), key=lambda item: item[1]["count"], reverse=True)[:max_elements]
-                cells = dict(selected)
-            return grid, cells
+    grid = max(4, voxel_grid)
+    cells: dict[tuple[int, int, int], dict[str, Any]] = {}
+    for point, color in samples:
+        normalized = normalize_point(point, minimum, maximum)
+        key = (
+            min(grid - 1, max(0, int((normalized.x / 16.0) * grid))),
+            min(grid - 1, max(0, int((normalized.y / 16.0) * grid))),
+            min(grid - 1, max(0, int((normalized.z / 16.0) * grid))),
+        )
+        cell = cells.setdefault(key, {"color": [0.0, 0.0, 0.0, 0.0], "count": 0})
+        cell["count"] += 1
+        for channel in range(4):
+            cell["color"][channel] += color[channel]
+    if len(cells) <= max_elements:
+        return grid, cells
+    return grid, select_cells_spatial(cells, grid, max_elements)
 
-    raise RuntimeError("Unable to build voxel cells")
+
+def select_cells_spatial(
+    cells: dict[tuple[int, int, int], dict[str, Any]],
+    grid: int,
+    max_elements: int,
+) -> dict[tuple[int, int, int], dict[str, Any]]:
+    if len(cells) <= max_elements:
+        return cells
+
+    cube_root = max(2, int(round(max_elements ** (1.0 / 3.0))))
+    bucket_count = min(grid, cube_root)
+    center = (grid - 1) * 0.5
+    max_dist = max(1.0, math.sqrt(3.0) * center)
+
+    buckets: dict[tuple[int, int, int], list[tuple[float, tuple[int, int, int], dict[str, Any]]]] = {}
+    for key, cell in cells.items():
+        x, y, z = key
+        bx = min(bucket_count - 1, max(0, int((x / max(1, grid - 1)) * bucket_count)))
+        by = min(bucket_count - 1, max(0, int((y / max(1, grid - 1)) * bucket_count)))
+        bz = min(bucket_count - 1, max(0, int((z / max(1, grid - 1)) * bucket_count)))
+        dist = math.sqrt((x - center) ** 2 + (y - center) ** 2 + (z - center) ** 2) / max_dist
+        score = float(cell.get("count", 1)) * (1.0 + 0.6 * dist)
+        buckets.setdefault((bx, by, bz), []).append((score, key, cell))
+
+    for group in buckets.values():
+        group.sort(key=lambda item: item[0], reverse=True)
+
+    selected: dict[tuple[int, int, int], dict[str, Any]] = {}
+    bucket_keys = list(buckets.keys())
+    while len(selected) < max_elements:
+        progressed = False
+        for bucket_key in bucket_keys:
+            group = buckets[bucket_key]
+            if not group:
+                continue
+            _, key, cell = group.pop(0)
+            selected[key] = cell
+            progressed = True
+            if len(selected) >= max_elements:
+                break
+        if not progressed:
+            break
+
+    if len(selected) < max_elements:
+        leftovers: list[tuple[float, tuple[int, int, int], dict[str, Any]]] = []
+        for group in buckets.values():
+            leftovers.extend(group)
+        leftovers.sort(key=lambda item: item[0], reverse=True)
+        for _, key, cell in leftovers:
+            if key in selected:
+                continue
+            selected[key] = cell
+            if len(selected) >= max_elements:
+                break
+    return selected
 
 
 def color_key(color: list[float], count: int) -> tuple[int, int, int, int]:

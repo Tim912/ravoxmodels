@@ -41,9 +41,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--format", required=True)
     parser.add_argument("--namespace", default="rvxmodels")
     parser.add_argument("--blender", default="")
-    parser.add_argument("--max-elements", type=int, default=512)
-    parser.add_argument("--voxel-grid", type=int, default=24)
-    parser.add_argument("--palette-size", type=int, default=24)
+    parser.add_argument("--max-elements", type=int, default=1024)
+    parser.add_argument("--voxel-grid", type=int, default=30)
+    parser.add_argument("--palette-size", type=int, default=32)
     parser.add_argument("--strict", action="store_true")
     return parser.parse_args()
 
