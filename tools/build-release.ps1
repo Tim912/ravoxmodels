@@ -31,13 +31,14 @@ if (Test-Path $zipPath) {
 }
 
 New-Item -ItemType Directory -Force -Path $bundleDir | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $bundleDir "jars") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $bundleDir "jars\plugins") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $bundleDir "jars\sdk") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $bundleDir "examples") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $bundleDir "tools") | Out-Null
 
-Copy-Item "ravoxmodels-core\target\ravoxmodels-core-$Version.jar" (Join-Path $bundleDir "jars")
-Copy-Item "ravoxmodels-api\target\ravoxmodels-api-$Version.jar" (Join-Path $bundleDir "jars")
-Copy-Item "ravoxmodels-bridge-customore\target\ravoxmodels-bridge-customore-$Version.jar" (Join-Path $bundleDir "jars")
+Copy-Item "ravoxmodels-core\target\ravoxmodels-core-$Version.jar" (Join-Path $bundleDir "jars\plugins")
+Copy-Item "ravoxmodels-bridge-customore\target\ravoxmodels-bridge-customore-$Version.jar" (Join-Path $bundleDir "jars\plugins")
+Copy-Item "ravoxmodels-api\target\ravoxmodels-api-$Version.jar" (Join-Path $bundleDir "jars\sdk")
 Copy-Item "README.md" $bundleDir
 Copy-Item "LICENSE" $bundleDir
 Copy-Item "VERSION" $bundleDir

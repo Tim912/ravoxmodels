@@ -30,6 +30,14 @@ JAR outputs:
 - `ravoxmodels-api/target/ravoxmodels-api-26.1.jar`
 - `ravoxmodels-bridge-customore/target/ravoxmodels-bridge-customore-26.1.jar`
 
+Server deployment:
+
+- Put only these into `plugins/`:
+- `ravoxmodels-core-26.1.jar`
+- `ravoxmodels-bridge-customore-26.1.jar` (optional)
+- Do **not** load `ravoxmodels-api-26.1.jar` as plugin jar; it is SDK-only for developers.
+- Do not use PlugMan reload/load for RavoxModels; restart Paper.
+
 ## Core features (`ravoxmodels-core`)
 
 - GLB/FBX import queue from import folder
