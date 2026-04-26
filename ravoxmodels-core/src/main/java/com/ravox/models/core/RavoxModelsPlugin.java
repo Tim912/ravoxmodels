@@ -66,7 +66,7 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
 
         this.resourcePackService = new ResourcePackService(this);
         this.licenseService = new LicenseService(this);
-        this.modelRuntime = new ModelRuntime(this, importService.getRegistry());
+        this.modelRuntime = new ModelRuntime(this, importService.getRegistry(), resourcePackService.getModelNamespace());
 
         licenseService.start();
         if (!licenseService.isValid()) {
@@ -308,6 +308,7 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
         sender.sendMessage("ImportQueue: " + importService.getQueuedJobs());
         sender.sendMessage("ConverterCommandEnabled: " + getConfig().getBoolean("converter.command.enabled", true));
         sender.sendMessage("BundledToolsDir: " + getDataFolder().toPath().resolve("tools"));
+        sender.sendMessage("PackNamespace: " + resourcePackService.getModelNamespace());
         sender.sendMessage("PackURL: " + resourcePackService.getActiveUrl());
         sender.sendMessage("PackSHA1: " + resourcePackService.getActiveSha1Hex());
         sender.sendMessage("PackFile: " + resourcePackService.getActiveZipPath());

@@ -6,6 +6,7 @@ import com.ravox.models.core.model.ModelRegistry;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.inventory.ItemStack;
@@ -25,12 +26,14 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class ModelRuntime {
     private final JavaPlugin plugin;
     private final ModelRegistry registry;
+    private final String modelNamespace;
     private final Map<UUID, ActiveModel> models = new ConcurrentHashMap<>();
     private BukkitTask tickTask;
 
-    public ModelRuntime(JavaPlugin plugin, ModelRegistry registry) {
+    public ModelRuntime(JavaPlugin plugin, ModelRegistry registry, String modelNamespace) {
         this.plugin = plugin;
         this.registry = registry;
+        this.modelNamespace = modelNamespace;
     }
 
     public void start() {
@@ -55,7 +58,7 @@ public final class ModelRuntime {
         if (definition == null || location.getWorld() == null) {
             return null;
         }
-        UUID entityId = spawnDisplayEntity(location, definition.getMaterialKey(), definition.getCustomModelData());
+        UUID entityId = spawnDisplayEntity(location, definition.getId(), definition.getMaterialKey(), definition.getCustomModelData());
         ModelHandle handle = new ModelHandle(UUID.randomUUID());
         ActiveModel active = new ActiveModel(handle, modelId, location, entityId, definition.getCustomModelData());
         models.put(handle.id(), active);
@@ -112,18 +115,18 @@ public final class ModelRuntime {
         return Collections.unmodifiableCollection(new ArrayList<>(models.values()));
     }
 
-    private UUID spawnDisplayEntity(Location location, String materialKey, int customModelData) {
+    private UUID spawnDisplayEntity(Location location, String modelId, String materialKey, int customModelData) {
         ItemDisplay display = location.getWorld().spawn(location, ItemDisplay.class, entity -> {
             entity.setPersistent(false);
             entity.setGravity(false);
             entity.setInvulnerable(true);
             entity.setSilent(true);
-            entity.setItemStack(createDisplayItem(materialKey, customModelData));
+            entity.setItemStack(createDisplayItem(modelId, materialKey, customModelData));
         });
         return display.getUniqueId();
     }
 
-    private ItemStack createDisplayItem(String materialKey, int customModelData) {
+    private ItemStack createDisplayItem(String modelId, String materialKey, int customModelData) {
         Material material = Material.matchMaterial(materialKey);
         if (material == null && materialKey != null) {
             int separator = materialKey.indexOf(':');
@@ -137,6 +140,10 @@ public final class ModelRuntime {
         ItemStack stack = new ItemStack(material);
         ItemMeta meta = stack.getItemMeta();
         if (meta != null) {
+            NamespacedKey itemModelKey = NamespacedKey.fromString(modelNamespace + ":" + modelId);
+            if (itemModelKey != null) {
+                meta.setItemModel(itemModelKey);
+            }
             CustomModelDataComponent component = meta.getCustomModelDataComponent();
             component.setFloats(List.of((float) customModelData));
             meta.setCustomModelDataComponent(component);

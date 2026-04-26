@@ -22,9 +22,11 @@ resourcepack:
   tracking_ttl_seconds: 300
   safety_block_localhost_url: true
   hosted_url: ""
+  model_namespace: rvxmodels
   pack_format: 84
   supported_formats_min: 84
   supported_formats_max: 32767
+  preview_texture_max_size: 256
   description: RavoxModels generated pack
   host:
     enabled: true

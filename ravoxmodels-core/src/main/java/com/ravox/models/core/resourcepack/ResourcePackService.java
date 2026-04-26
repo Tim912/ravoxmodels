@@ -14,6 +14,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 import javax.imageio.ImageIO;
 import java.awt.Color;
 import java.awt.Graphics2D;
+import java.awt.Image;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
@@ -54,9 +56,11 @@ public final class ResourcePackService {
     private final String hostPublic;
     private final int hostPort;
     private final String hostPath;
+    private final String modelNamespace;
     private final int packFormat;
     private final int supportedFormatsMin;
     private final int supportedFormatsMax;
+    private final int previewTextureMaxSize;
     private final String description;
     private final int joinSendDelayTicks;
     private final int retryDelayTicks;
@@ -81,9 +85,11 @@ public final class ResourcePackService {
         this.hostPublic = cfg.getString("resourcepack.host.public_host", "127.0.0.1");
         this.hostPort = cfg.getInt("resourcepack.host.port", 8777);
         this.hostPath = normalizePath(cfg.getString("resourcepack.host.path", "/ravoxmodels/pack.zip"));
+        this.modelNamespace = normalizeNamespace(cfg.getString("resourcepack.model_namespace", "rvxmodels"));
         this.packFormat = cfg.getInt("resourcepack.pack_format", 84);
         this.supportedFormatsMin = cfg.getInt("resourcepack.supported_formats_min", packFormat);
         this.supportedFormatsMax = cfg.getInt("resourcepack.supported_formats_max", packFormat);
+        this.previewTextureMaxSize = Math.max(0, cfg.getInt("resourcepack.preview_texture_max_size", 256));
         this.description = cfg.getString("resourcepack.description", "RavoxModels generated pack");
         this.joinSendDelayTicks = Math.max(0, cfg.getInt("resourcepack.join_send_delay_ticks", 40));
         this.retryDelayTicks = Math.max(1, cfg.getInt("resourcepack.retry_delay_ticks", 60));
@@ -281,6 +287,10 @@ public final class ResourcePackService {
         return lastBuildAt;
     }
 
+    public String getModelNamespace() {
+        return modelNamespace;
+    }
+
     private void writePackMeta(Path tempDir) throws IOException {
         Map<String, Object> root = new HashMap<>();
         Map<String, Object> pack = new HashMap<>();
@@ -298,12 +308,14 @@ public final class ResourcePackService {
     }
 
     private void writeModelEntries(Path tempDir, Iterable<ModelDefinition> models) throws IOException {
-        Path rvxModelDir = tempDir.resolve("assets/rvxmodels/models/item");
-        Path rvxTextureDir = tempDir.resolve("assets/rvxmodels/textures/item");
+        Path namespaceModelDir = tempDir.resolve("assets").resolve(modelNamespace).resolve("models/item");
+        Path namespaceTextureDir = tempDir.resolve("assets").resolve(modelNamespace).resolve("textures/item");
+        Path namespaceItemDir = tempDir.resolve("assets").resolve(modelNamespace).resolve("items");
         Path mcLegacyModelDir = tempDir.resolve("assets/minecraft/models/item");
         Path mcItemDefinitionDir = tempDir.resolve("assets/minecraft/items");
-        Files.createDirectories(rvxModelDir);
-        Files.createDirectories(rvxTextureDir);
+        Files.createDirectories(namespaceModelDir);
+        Files.createDirectories(namespaceTextureDir);
+        Files.createDirectories(namespaceItemDir);
         Files.createDirectories(mcLegacyModelDir);
         Files.createDirectories(mcItemDefinitionDir);
 
@@ -313,14 +325,18 @@ public final class ResourcePackService {
             byMaterial.computeIfAbsent(materialAssetKey, ignored -> new ArrayList<>()).add(model);
             copyConverterPackAssets(tempDir, model);
 
-            Path modelTarget = rvxModelDir.resolve(model.getId() + ".json");
+            Path modelTarget = namespaceModelDir.resolve(model.getId() + ".json");
             if (!Files.exists(modelTarget) || !Files.isRegularFile(modelTarget)) {
                 writeModelJson(modelTarget, model.getId());
             }
 
-            Path textureTarget = rvxTextureDir.resolve(model.getId() + ".png");
+            Path textureTarget = namespaceTextureDir.resolve(model.getId() + ".png");
             if (!Files.exists(textureTarget) || !Files.isRegularFile(textureTarget)) {
                 writeTexture(textureTarget, model);
+            }
+            Path itemDefinitionTarget = namespaceItemDir.resolve(model.getId() + ".json");
+            if (!Files.exists(itemDefinitionTarget) || !Files.isRegularFile(itemDefinitionTarget)) {
+                writeModelItemDefinition(itemDefinitionTarget, model.getId());
             }
         }
         for (Map.Entry<String, List<ModelDefinition>> entry : byMaterial.entrySet()) {
@@ -334,8 +350,17 @@ public final class ResourcePackService {
         Map<String, Object> root = new HashMap<>();
         root.put("parent", "minecraft:item/generated");
         Map<String, String> textures = new HashMap<>();
-        textures.put("layer0", "rvxmodels:item/" + modelId);
+        textures.put("layer0", modelNamespace + ":item/" + modelId);
         root.put("textures", textures);
+        Files.writeString(path, GSON.toJson(root), StandardCharsets.UTF_8);
+    }
+
+    private void writeModelItemDefinition(Path path, String modelId) throws IOException {
+        Map<String, Object> root = new HashMap<>();
+        Map<String, Object> model = new HashMap<>();
+        model.put("type", "minecraft:model");
+        model.put("model", modelNamespace + ":item/" + modelId);
+        root.put("model", model);
         Files.writeString(path, GSON.toJson(root), StandardCharsets.UTF_8);
     }
 
@@ -373,7 +398,7 @@ public final class ResourcePackService {
 
             Map<String, Object> entryModel = new HashMap<>();
             entryModel.put("type", "minecraft:model");
-            entryModel.put("model", "rvxmodels:item/" + definition.getId());
+            entryModel.put("model", modelNamespace + ":item/" + definition.getId());
             entry.put("model", entryModel);
             entries.add(entry);
         }
@@ -392,11 +417,48 @@ public final class ResourcePackService {
         if (model.getPreviewTexturePath() != null && !model.getPreviewTexturePath().isBlank()) {
             Path preview = plugin.getDataFolder().toPath().resolve(model.getPreviewTexturePath()).normalize();
             if (Files.exists(preview) && Files.isRegularFile(preview)) {
-                Files.copy(preview, output, StandardCopyOption.REPLACE_EXISTING);
+                copyPreviewTexture(preview, output);
                 return;
             }
         }
         writePlaceholderTexture(output, model.getId());
+    }
+
+    private void copyPreviewTexture(Path preview, Path output) throws IOException {
+        Files.createDirectories(output.getParent());
+        if (previewTextureMaxSize <= 0) {
+            Files.copy(preview, output, StandardCopyOption.REPLACE_EXISTING);
+            return;
+        }
+        BufferedImage source = ImageIO.read(preview.toFile());
+        if (source == null) {
+            Files.copy(preview, output, StandardCopyOption.REPLACE_EXISTING);
+            return;
+        }
+        int width = source.getWidth();
+        int height = source.getHeight();
+        int maxDimension = Math.max(width, height);
+        if (maxDimension <= previewTextureMaxSize) {
+            Files.copy(preview, output, StandardCopyOption.REPLACE_EXISTING);
+            return;
+        }
+
+        double scale = (double) previewTextureMaxSize / (double) maxDimension;
+        int targetWidth = Math.max(1, (int) Math.round(width * scale));
+        int targetHeight = Math.max(1, (int) Math.round(height * scale));
+
+        Image scaled = source.getScaledInstance(targetWidth, targetHeight, Image.SCALE_SMOOTH);
+        BufferedImage result = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = result.createGraphics();
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.drawImage(scaled, 0, 0, null);
+        } finally {
+            g.dispose();
+        }
+        ImageIO.write(result, "png", output.toFile());
     }
 
     private void writePlaceholderTexture(Path output, String seed) throws IOException {
@@ -589,6 +651,24 @@ public final class ResourcePackService {
             key = key.substring(namespaceSeparator + 1);
         }
         return key;
+    }
+
+    private static String normalizeNamespace(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "rvxmodels";
+        }
+        String lower = raw.toLowerCase(Locale.ROOT).trim();
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < lower.length(); i++) {
+            char c = lower.charAt(i);
+            boolean valid = (c >= 'a' && c <= 'z')
+                    || (c >= '0' && c <= '9')
+                    || c == '_'
+                    || c == '-'
+                    || c == '.';
+            out.append(valid ? c : '_');
+        }
+        return out.isEmpty() ? "rvxmodels" : out.toString();
     }
 
     private record DeliveryState(long sentAtMillis, int downloadFailures) {
