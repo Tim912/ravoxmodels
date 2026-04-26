@@ -32,6 +32,10 @@ SUPPORTED_MATERIAL_EXTS = {
     "KHR_texture_transform",
 }
 
+BLENDER_UNSTABLE_MATERIAL_EXTS = {
+    "KHR_materials_specular",
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -78,6 +82,73 @@ def read_glb(glb_path: Path) -> tuple[dict[str, Any], bytes | None]:
     if json_chunk is None:
         raise ValueError("Missing GLB JSON chunk")
     return json.loads(json_chunk.decode("utf-8").rstrip("\x00\r\n\t ")), bin_chunk
+
+
+def pad4(data: bytes, pad_byte: int) -> bytes:
+    padding = (-len(data)) % 4
+    if padding == 0:
+        return data
+    return data + bytes([pad_byte]) * padding
+
+
+def write_glb(glb_path: Path, root: dict[str, Any], bin_chunk: bytes | None) -> None:
+    json_chunk = pad4(json.dumps(root, separators=(",", ":")).encode("utf-8"), 0x20)
+    chunks = [(0x4E4F534A, json_chunk)]
+    if bin_chunk is not None:
+        chunks.append((0x004E4942, pad4(bin_chunk, 0x00)))
+    total_len = 12 + sum(8 + len(data) for _, data in chunks)
+    out = bytearray()
+    out.extend(struct.pack("<4sII", b"glTF", 2, total_len))
+    for chunk_type, data in chunks:
+        out.extend(struct.pack("<II", len(data), chunk_type))
+        out.extend(data)
+    glb_path.parent.mkdir(parents=True, exist_ok=True)
+    glb_path.write_bytes(bytes(out))
+
+
+def remove_extensions_list(root: dict[str, Any], key: str, removed: set[str]) -> None:
+    values = root.get(key)
+    if not isinstance(values, list):
+        return
+    kept = [value for value in values if value not in removed]
+    if kept:
+        root[key] = kept
+    else:
+        root.pop(key, None)
+
+
+def prepare_blender_input(src: Path, out_dir: Path, warnings: list[str]) -> Path:
+    if src.suffix.lower() != ".glb":
+        return src
+    try:
+        root, bin_chunk = read_glb(src)
+    except Exception as exc:
+        warnings.append("GLB material pre-clean skipped: " + safe_short(str(exc)))
+        return src
+
+    removed: set[str] = set()
+    for material in root.get("materials", []) or []:
+        if not isinstance(material, dict):
+            continue
+        extensions = material.get("extensions")
+        if not isinstance(extensions, dict):
+            continue
+        for ext in sorted(BLENDER_UNSTABLE_MATERIAL_EXTS):
+            if ext in extensions:
+                extensions.pop(ext, None)
+                removed.add(ext)
+        if not extensions:
+            material.pop("extensions", None)
+
+    if not removed:
+        return src
+
+    remove_extensions_list(root, "extensionsUsed", removed)
+    remove_extensions_list(root, "extensionsRequired", removed)
+    sanitized = out_dir / "blender-input.glb"
+    write_glb(sanitized, root, bin_chunk)
+    warnings.append("Removed Blender-unstable GLB material extensions before import: " + ", ".join(sorted(removed)))
+    return sanitized
 
 
 def read_jpeg_size(data: bytes) -> tuple[int, int] | None:
@@ -406,8 +477,9 @@ def main() -> int:
             (out_dir / "conversion-report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
             return 1 if args.strict else 0
 
+        blender_input = prepare_blender_input(src, out_dir, warnings)
         ok, blender_msg = run_blender(
-            src,
+            blender_input,
             normalized_glb,
             resourcepack_dir,
             blender_bin,
