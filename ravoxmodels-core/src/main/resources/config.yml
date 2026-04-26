@@ -41,17 +41,19 @@ runtime:
 converter:
   strict: false
   command:
-    enabled: false
+    enabled: true
     shell: powershell
     timeout_seconds: 180
     strict_exit_code: true
     require_report: false
     # Placeholders: {input} {output} {model_id} {model_dir} {plugin_dir} {runtime_dir} {format}
-    # Example:
-    # glb: "python {plugin_dir}/tools/converter_backend.py --input {input} --output {output} --model {model_id} --format {format}"
-    glb: ""
+    glb: "python {plugin_dir}/tools/converter_backend.py --input {input} --output {output} --model {model_id} --format {format}"
     # fbx can be separate command or same script with --format fbx
-    fbx: ""
+    fbx: "python {plugin_dir}/tools/converter_backend.py --input {input} --output {output} --model {model_id} --format {format}"
+
+tools:
+  install_bundled_converter: true
+  overwrite_on_start: false
 
 limits:
   max_triangles: 15000

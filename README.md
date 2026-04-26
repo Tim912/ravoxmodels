@@ -54,6 +54,8 @@ Server deployment:
 - version warning and converter-stage note
 - converter backend flow:
 - command backend with per-format commands (`glb`/`fbx`)
+- bundled reference backend script auto-installed to `plugins/RavoxModels/tools`
+- optional Blender bridge script for FBX/GLTF normalization
 - timeout + strict exit code
 - optional `conversion-report.json` contract
 - fallback to metadata import when strict mode is disabled
@@ -120,6 +122,15 @@ All animation keys are normalized to `rvxmodels.*`.
 
 If `converter.command.enabled: true`, RavoxModels executes your command from `config.yml`.
 
+Default config already points to bundled script:
+
+- `python {plugin_dir}/tools/converter_backend.py ...`
+
+For FBX normalization, install Blender and either:
+
+- put `blender` in PATH, or
+- set environment variable `RAVOX_BLENDER` to blender executable path
+
 Supported placeholders:
 
 - `{input}`
@@ -152,5 +163,5 @@ Uses threshold mapping from bridge `config.yml` to trigger animation changes by 
 
 ## Notes
 
-- This `26.1` codebase provides a robust pipeline/runtime foundation.
-- Fully generic, perfect conversion for arbitrary third-party GLB/FBX assets is still a bounded problem and should run under explicit asset rules (triangle/bone/texture limits).
+- This `26.1` codebase now includes a real converter backend flow (command + report + runtime artifacts).
+- Best results still depend on source-asset quality and explicit import limits (triangles/bones/textures).

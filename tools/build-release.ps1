@@ -45,6 +45,7 @@ Copy-Item "VERSION" $bundleDir
 Copy-Item "ravoxmodels-core\src\main\resources\config.yml" (Join-Path $bundleDir "examples\core-config.yml")
 Copy-Item "ravoxmodels-bridge-customore\src\main\resources\config.yml" (Join-Path $bundleDir "examples\bridge-config.yml")
 Copy-Item "tools\converter_backend.py" (Join-Path $bundleDir "tools\converter_backend.py")
+Copy-Item "tools\converter_blender_bridge.py" (Join-Path $bundleDir "tools\converter_blender_bridge.py")
 
 Compress-Archive -Path (Join-Path $bundleDir "*") -DestinationPath $zipPath -Force
 

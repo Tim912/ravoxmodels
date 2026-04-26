@@ -2,6 +2,7 @@ package com.ravox.models.core;
 
 import com.ravox.models.api.ModelHandle;
 import com.ravox.models.api.RavoxModelsApi;
+import com.ravox.models.core.converter.BundledToolsInstaller;
 import com.ravox.models.core.importer.ImportRecord;
 import com.ravox.models.core.importer.ImportService;
 import com.ravox.models.core.license.LicenseService;
@@ -51,6 +52,9 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
         this.keyPrefix = getConfig().getString("namespace.prefix", "rvxmodels").toLowerCase(Locale.ROOT);
         this.rebuildPackOnImport = getConfig().getBoolean("import.rebuild_pack_on_success", true);
         this.autoForcePackOnImport = getConfig().getBoolean("import.force_pack_after_build", false);
+        if (getConfig().getBoolean("tools.install_bundled_converter", true)) {
+            new BundledToolsInstaller(this).install(getConfig().getBoolean("tools.overwrite_on_start", false));
+        }
 
         try {
             this.importService = new ImportService(this, getConfig());
@@ -290,6 +294,8 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
         sender.sendMessage("Models: " + importService.getRegistry().size());
         sender.sendMessage("ActiveRuntimeModels: " + modelRuntime.all().size());
         sender.sendMessage("ImportQueue: " + importService.getQueuedJobs());
+        sender.sendMessage("ConverterCommandEnabled: " + getConfig().getBoolean("converter.command.enabled", true));
+        sender.sendMessage("BundledToolsDir: " + getDataFolder().toPath().resolve("tools"));
         sender.sendMessage("PackURL: " + resourcePackService.getActiveUrl());
         sender.sendMessage("PackSHA1: " + resourcePackService.getActiveSha1Hex());
         sender.sendMessage("PackLastBuild: " + formatEpoch(resourcePackService.getLastBuildAt()));
