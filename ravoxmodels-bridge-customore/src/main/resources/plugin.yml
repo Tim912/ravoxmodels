@@ -4,3 +4,12 @@ version: ${project.version}
 api-version: "1.20"
 authors: [Ravox]
 softdepend: [RavoxModels, CustomOrePlugin]
+commands:
+  rvxbridge:
+    description: RavoxModels bridge diagnostics and phase simulation
+    usage: /rvxbridge phase <handleUuid> <currentHp> <maxHp>
+    permission: ravoxmodels.bridge.admin
+permissions:
+  ravoxmodels.bridge.admin:
+    description: Admin access to RavoxModels bridge commands
+    default: op

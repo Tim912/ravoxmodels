@@ -5,6 +5,9 @@ namespace:
 
 import:
   directory: plugins/RavoxModels/import
+  auto_watch: true
+  rebuild_pack_on_success: true
+  force_pack_after_build: false
   accepted_extensions:
     - glb
     - fbx
@@ -14,6 +17,8 @@ resourcepack:
   force: true
   auto_apply_on_join: true
   hosted_url: ""
+  pack_format: 84
+  description: RavoxModels generated pack
   host:
     enabled: true
     public_host: 127.0.0.1
@@ -26,8 +31,12 @@ license:
   key: ""
   product: ravoxmodels
   server_id: ""
+  timeout_ms: 5000
   heartbeat_minutes: 30
   grace_hours: 48
+
+runtime:
+  item_material: STICK
 
 limits:
   max_triangles: 15000

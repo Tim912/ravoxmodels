@@ -1,0 +1,7 @@
+phase:
+  blend_millis: 350
+  thresholds:
+    "0.80": rvxmodels.firecoloss.phase_80
+    "0.60": rvxmodels.firecoloss.phase_60
+    "0.40": rvxmodels.firecoloss.phase_40
+    "0.20": rvxmodels.firecoloss.phase_20
