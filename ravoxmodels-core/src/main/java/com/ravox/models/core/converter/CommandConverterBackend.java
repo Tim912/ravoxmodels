@@ -12,8 +12,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 public final class CommandConverterBackend implements ConverterBackend {
@@ -33,7 +35,7 @@ public final class CommandConverterBackend implements ConverterBackend {
         this.namespace = normalizeNamespace(config.getString("resourcepack.model_namespace", "rvxmodels"));
         this.glbCommand = normalizeBundledCommand(config.getString("converter.command.glb", "").trim(), "glb");
         this.fbxCommand = normalizeBundledCommand(config.getString("converter.command.fbx", "").trim(), "fbx");
-        this.shell = config.getString("converter.command.shell", "powershell").trim().toLowerCase(Locale.ROOT);
+        this.shell = config.getString("converter.command.shell", "auto").trim().toLowerCase(Locale.ROOT);
         int minimumTimeout = (glbCommand.contains("converter_backend.py") || fbxCommand.contains("converter_backend.py")) ? 900 : 1;
         this.timeoutSeconds = Math.max(minimumTimeout, config.getInt("converter.command.timeout_seconds", 180));
         this.strictExitCode = config.getBoolean("converter.command.strict_exit_code", true);
@@ -64,36 +66,119 @@ public final class CommandConverterBackend implements ConverterBackend {
         }
 
         String command = interpolate(template, request);
-        ProcessBuilder builder = processBuilderFor(command);
-        builder.directory(request.modelDirectory().toFile());
-        builder.redirectErrorStream(true);
         Path converterOutput = runtimeDir.resolve("converter-output.log");
-        builder.redirectOutput(converterOutput.toFile());
-
         String output;
         int exitCode;
         Process process = null;
-        try {
-            Files.deleteIfExists(converterOutput);
-            process = builder.start();
-            boolean completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
-            if (!completed) {
-                process.destroyForcibly();
+        IOException lastLaunchError = null;
+        String usedShell = null;
+        List<String> shellCandidates = shellCandidates();
+        for (String candidateShell : shellCandidates) {
+            ProcessBuilder builder = processBuilderFor(command, candidateShell);
+            builder.directory(request.modelDirectory().toFile());
+            builder.redirectErrorStream(true);
+            builder.redirectOutput(converterOutput.toFile());
+            try {
+                Files.deleteIfExists(converterOutput);
+                process = builder.start();
+                usedShell = candidateShell;
+                boolean completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
+                if (!completed) {
+                    process.destroyForcibly();
+                    output = readProcessOutput(converterOutput);
+                    return ConversionResult.failure(name(), "Converter timed out after " + timeoutSeconds + "s: " + safeShort(output));
+                }
+                exitCode = process.exitValue();
                 output = readProcessOutput(converterOutput);
-                return ConversionResult.failure(name(), "Converter timed out after " + timeoutSeconds + "s: " + safeShort(output));
+                if (!candidateShell.equals(shell) && !"auto".equals(shell)) {
+                    plugin.getLogger().warning("Converter shell fallback: " + shell + " -> " + candidateShell);
+                }
+                return finishConversion(runtimeDir, request, exitCode, output);
+            } catch (IOException ex) {
+                lastLaunchError = ex;
+            } catch (InterruptedException ex) {
+                if (process != null) {
+                    process.destroyForcibly();
+                }
+                Thread.currentThread().interrupt();
+                return ConversionResult.failure(name(), "Converter interrupted.");
             }
-            exitCode = process.exitValue();
-            output = readProcessOutput(converterOutput);
-        } catch (IOException ex) {
-            return ConversionResult.failure(name(), "Converter failed to run: " + ex.getMessage());
-        } catch (InterruptedException ex) {
-            if (process != null) {
-                process.destroyForcibly();
-            }
-            Thread.currentThread().interrupt();
-            return ConversionResult.failure(name(), "Converter interrupted.");
         }
+        String launchMessage = lastLaunchError == null ? "unknown launch error" : lastLaunchError.getMessage();
+        return ConversionResult.failure(name(), "Converter failed to run (shells: " + String.join(", ", shellCandidates) + "): " + launchMessage);
+    }
 
+    @Override
+    public String name() {
+        return "command";
+    }
+
+    private String commandTemplate(ModelFormat format) {
+        return switch (format) {
+            case GLB -> glbCommand;
+            case FBX -> fbxCommand;
+        };
+    }
+
+    private String normalizeBundledCommand(String raw, String format) {
+        String normalized = raw;
+        if (normalized.contains("converter_backend.py") && (!normalized.contains("--max-elements")
+                || raw.contains("--max-elements 1024")
+                || raw.contains("{plugin_dir}/tools/converter_backend.py")
+                || raw.contains("{plugin_dir}\\tools\\converter_backend.py"))) {
+            plugin.getLogger().info("Upgrading bundled converter command for " + format + " at runtime.");
+            normalized = defaultBundledCommand();
+        }
+        return normalizePythonLauncher(normalized);
+    }
+
+    private static String defaultBundledCommand() {
+        return defaultPythonLauncher() + " {converter_backend}"
+                + " --input {input}"
+                + " --output {output}"
+                + " --model {model_id}"
+                + " --format {format}"
+                + " --namespace {namespace}"
+                + " --max-elements 256"
+                + " --voxel-grid 20"
+                + " --palette-size 16"
+                + " --strict";
+    }
+
+    private ProcessBuilder processBuilderFor(String command, String shellName) {
+        return switch (shellName) {
+            case "cmd" -> new ProcessBuilder("cmd.exe", "/c", command);
+            case "bash" -> new ProcessBuilder("bash", "-lc", command);
+            case "sh" -> new ProcessBuilder("sh", "-lc", command);
+            default -> new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command);
+        };
+    }
+
+    private List<String> shellCandidates() {
+        Set<String> candidates = new LinkedHashSet<>();
+        boolean windows = isWindowsRuntime();
+        if ("auto".equals(shell)) {
+            if (windows) {
+                candidates.add("powershell");
+                candidates.add("cmd");
+            } else {
+                candidates.add("sh");
+                candidates.add("bash");
+            }
+        } else {
+            candidates.add(shell);
+            if (windows) {
+                candidates.add("powershell");
+                candidates.add("cmd");
+            } else {
+                candidates.add("sh");
+                candidates.add("bash");
+            }
+        }
+        return new ArrayList<>(candidates);
+    }
+
+    private ConversionResult finishConversion(Path runtimeDir, ConversionRequest request, int exitCode, String output) {
         Path reportPath = runtimeDir.resolve("conversion-report.json");
         if (Files.exists(reportPath)) {
             return parseReport(reportPath, exitCode, output);
@@ -112,50 +197,6 @@ public final class CommandConverterBackend implements ConverterBackend {
                 output.isBlank() ? List.of() : List.of(safeShort(output)),
                 List.of()
         );
-    }
-
-    @Override
-    public String name() {
-        return "command";
-    }
-
-    private String commandTemplate(ModelFormat format) {
-        return switch (format) {
-            case GLB -> glbCommand;
-            case FBX -> fbxCommand;
-        };
-    }
-
-    private String normalizeBundledCommand(String raw, String format) {
-        if (raw.contains("converter_backend.py") && (!raw.contains("--max-elements")
-                || raw.contains("--max-elements 1024")
-                || raw.contains("{plugin_dir}/tools/converter_backend.py")
-                || raw.contains("{plugin_dir}\\tools\\converter_backend.py"))) {
-            plugin.getLogger().info("Upgrading bundled converter command for " + format + " at runtime.");
-            return defaultBundledCommand();
-        }
-        return raw;
-    }
-
-    private static String defaultBundledCommand() {
-        return "py -3 {converter_backend}"
-                + " --input {input}"
-                + " --output {output}"
-                + " --model {model_id}"
-                + " --format {format}"
-                + " --namespace {namespace}"
-                + " --max-elements 256"
-                + " --voxel-grid 20"
-                + " --palette-size 16"
-                + " --strict";
-    }
-
-    private ProcessBuilder processBuilderFor(String command) {
-        return switch (shell) {
-            case "cmd" -> new ProcessBuilder("cmd.exe", "/c", command);
-            case "bash" -> new ProcessBuilder("bash", "-lc", command);
-            default -> new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command);
-        };
     }
 
     private String interpolate(String template, ConversionRequest request) {
@@ -285,6 +326,32 @@ public final class CommandConverterBackend implements ConverterBackend {
             return "\"" + value + "\"";
         }
         return value;
+    }
+
+    private static String normalizePythonLauncher(String command) {
+        String trimmed = command.trim();
+        String lower = trimmed.toLowerCase(Locale.ROOT);
+        if (isWindowsRuntime()) {
+            if (lower.startsWith("python3 ")) {
+                return "py -3 " + trimmed.substring("python3 ".length());
+            }
+            if (lower.startsWith("python ")) {
+                return "py -3 " + trimmed.substring("python ".length());
+            }
+            return command;
+        }
+        if (lower.startsWith("py -3 ")) {
+            return "python3 " + trimmed.substring("py -3 ".length());
+        }
+        return command;
+    }
+
+    private static String defaultPythonLauncher() {
+        return isWindowsRuntime() ? "py -3" : "python3";
+    }
+
+    private static boolean isWindowsRuntime() {
+        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
     }
 
     private static String safeShort(String raw) {

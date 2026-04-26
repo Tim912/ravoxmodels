@@ -51,7 +51,7 @@ converter:
   strict: true
   command:
     enabled: true
-    shell: powershell
+    shell: auto
     timeout_seconds: 900
     strict_exit_code: true
     require_report: false
