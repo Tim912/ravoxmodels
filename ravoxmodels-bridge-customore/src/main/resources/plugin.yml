@@ -1,7 +1,7 @@
 name: RavoxModelsCustomOreBridge
 main: com.ravox.models.bridge.customore.CustomOreBridgePlugin
 version: ${project.version}
-api-version: "1.21"
+api-version: "26.1.1"
 authors: [Ravox]
 softdepend: [RavoxModels, CustomOrePlugin]
 commands:

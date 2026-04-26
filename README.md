@@ -18,6 +18,12 @@ Requires `Java 25` (for Paper `26.1.x` API).
 mvn -q clean package
 ```
 
+Release bundle (jars + example configs + zip):
+
+```powershell
+./tools/build-release.ps1 -Version 26.1
+```
+
 JAR outputs:
 
 - `ravoxmodels-core/target/ravoxmodels-core-26.1.jar`
@@ -38,6 +44,11 @@ JAR outputs:
 - FBX inspection:
 - header/basic validation
 - version warning and converter-stage note
+- converter backend flow:
+- command backend with per-format commands (`glb`/`fbx`)
+- timeout + strict exit code
+- optional `conversion-report.json` contract
+- fallback to metadata import when strict mode is disabled
 - persistent model registry (`plugins/RavoxModels/models/index.json`)
 - per-model package directory with `manifest.json`
 - runtime model handles with:
@@ -96,6 +107,34 @@ if (bossCurrentHp < 1_000_000) {
 ```
 
 All animation keys are normalized to `rvxmodels.*`.
+
+## Converter backend contract
+
+If `converter.command.enabled: true`, RavoxModels executes your command from `config.yml`.
+
+Supported placeholders:
+
+- `{input}`
+- `{output}`
+- `{model_id}`
+- `{model_dir}`
+- `{plugin_dir}`
+- `{runtime_dir}`
+- `{format}`
+
+Optional output file (recommended): `{runtime_dir}/conversion-report.json`
+
+Example:
+
+```json
+{
+  "success": true,
+  "message": "ok",
+  "animations": ["idle", "attack"],
+  "artifacts": ["runtime/mesh.bin", "runtime/anim.bin"],
+  "warnings": []
+}
+```
 
 ## Bridge module (`ravoxmodels-bridge-customore`)
 

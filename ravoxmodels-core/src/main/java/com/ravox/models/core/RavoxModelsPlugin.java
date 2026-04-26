@@ -347,7 +347,8 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
                     + " cmd=" + model.getCustomModelData()
                     + " anims=" + model.getAnimationCount()
                     + " tris=" + model.getEstimatedTriangles()
-                    + " bones=" + model.getSkinBones());
+                    + " bones=" + model.getSkinBones()
+                    + " converter=" + (model.isConverterApplied() ? model.getConverterName() : "none"));
         }
         return true;
     }
@@ -371,6 +372,8 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
         sender.sendMessage("TextureMax: " + model.getMaxTextureSize() + ", Animations: " + model.getAnimationCount());
         sender.sendMessage("AnimationKeys: " + String.join(", ", model.getAnimationKeys()));
         sender.sendMessage("Material/CMD: " + model.getMaterialKey() + "/" + model.getCustomModelData());
+        sender.sendMessage("Converter: " + (model.isConverterApplied() ? model.getConverterName() : "none"));
+        sender.sendMessage("RuntimeArtifacts: " + String.join(", ", model.getRuntimeArtifacts()));
         sender.sendMessage("Warnings: " + String.join(" | ", model.getWarnings()));
         return true;
     }

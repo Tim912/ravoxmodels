@@ -2,6 +2,9 @@ package com.ravox.models.core.importer;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.ravox.models.core.converter.ConversionRequest;
+import com.ravox.models.core.converter.ConversionResult;
+import com.ravox.models.core.converter.ConverterPipeline;
 import com.ravox.models.core.model.ModelDefinition;
 import com.ravox.models.core.model.ModelFormat;
 import com.ravox.models.core.model.ModelIdUtil;
@@ -11,7 +14,6 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
@@ -54,6 +56,7 @@ public final class ImportService {
     private final String materialKey;
     private final boolean autoWatch;
     private final ModelRegistry registry;
+    private final ConverterPipeline converterPipeline;
     private final GlbInspector glbInspector = new GlbInspector();
     private final FbxInspector fbxInspector = new FbxInspector();
     private final ExecutorService importerExecutor = Executors.newSingleThreadExecutor(r -> {
@@ -81,6 +84,7 @@ public final class ImportService {
         );
         this.materialKey = config.getString("runtime.item_material", "STICK").toUpperCase(Locale.ROOT);
         this.autoWatch = config.getBoolean("import.auto_watch", true);
+        this.converterPipeline = new ConverterPipeline(plugin, config);
 
         Files.createDirectories(importDirectory);
         Files.createDirectories(modelsDirectory);
@@ -207,6 +211,8 @@ public final class ImportService {
 
             Path sourceTarget = modelDir.resolve("source." + ext);
             Files.copy(source, sourceTarget, StandardCopyOption.REPLACE_EXISTING);
+            Path runtimeDir = modelDir.resolve("runtime");
+            Files.createDirectories(runtimeDir);
 
             String sha1 = sha1(sourceTarget);
             String previewTexturePath = null;
@@ -217,9 +223,29 @@ public final class ImportService {
                 previewTexturePath = relativeToData(previewPath);
             }
 
+            ConversionResult conversion = converterPipeline.convert(new ConversionRequest(
+                    modelId,
+                    inspection.getFormat(),
+                    sourceTarget,
+                    modelDir,
+                    runtimeDir,
+                    plugin.getDataFolder().toPath()
+            ));
+            if (!conversion.isSuccess()) {
+                addHistory(new ImportRecord(now(), ImportStatus.FAILED, filename, null, "Converter failed: " + conversion.getMessage()));
+                return;
+            }
+
             Path manifestPath = modelDir.resolve("manifest.json");
             int customModelData = customModelDataFor(modelId);
-            List<String> animationKeys = sanitizeAnimations(inspection.getAnimationNames());
+            List<String> animationKeys;
+            if (!conversion.getAnimationNames().isEmpty()) {
+                animationKeys = sanitizeAnimations(conversion.getAnimationNames());
+            } else {
+                animationKeys = sanitizeAnimations(inspection.getAnimationNames());
+            }
+            List<String> warnings = new ArrayList<>(inspection.getWarnings());
+            warnings.addAll(conversion.getWarnings());
             ModelDefinition definition = new ModelDefinition(
                     modelId,
                     inspection.getFormat(),
@@ -229,14 +255,17 @@ public final class ImportService {
                     inspection.getEstimatedTriangles(),
                     inspection.getSkinBones(),
                     inspection.getMaxTextureSize(),
-                    inspection.getAnimationCount(),
+                    animationKeys.size(),
                     animationKeys,
                     customModelData,
                     materialKey,
                     relativeToData(modelDir),
                     relativeToData(manifestPath),
                     previewTexturePath,
-                    inspection.getWarnings()
+                    !"noop".equalsIgnoreCase(conversion.getBackendName()),
+                    conversion.getBackendName(),
+                    conversion.getArtifacts(),
+                    warnings
             );
 
             writeManifest(manifestPath, definition);
@@ -247,7 +276,13 @@ public final class ImportService {
             if (callback != null) {
                 callback.accept(definition);
             }
-            addHistory(new ImportRecord(now(), ImportStatus.SUCCESS, filename, modelId, "Imported"));
+            addHistory(new ImportRecord(
+                    now(),
+                    ImportStatus.SUCCESS,
+                    filename,
+                    modelId,
+                    "Imported via " + conversion.getBackendName() + ": " + conversion.getMessage()
+            ));
         } catch (Exception ex) {
             addHistory(new ImportRecord(now(), ImportStatus.FAILED, source.getFileName().toString(), null, ex.getMessage()));
             plugin.getLogger().warning("Import failed for " + source.getFileName() + ": " + ex.getMessage());

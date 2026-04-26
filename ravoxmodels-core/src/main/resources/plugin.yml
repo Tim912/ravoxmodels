@@ -1,7 +1,7 @@
 name: RavoxModels
 main: com.ravox.models.core.RavoxModelsPlugin
 version: ${project.version}
-api-version: "1.21"
+api-version: "26.1.1"
 authors: [Ravox]
 commands:
   ravoxmodels:

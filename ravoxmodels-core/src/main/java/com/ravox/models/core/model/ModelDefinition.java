@@ -21,6 +21,9 @@ public final class ModelDefinition {
     private final String modelDirectory;
     private final String manifestPath;
     private final String previewTexturePath;
+    private final boolean converterApplied;
+    private final String converterName;
+    private final List<String> runtimeArtifacts;
     private final List<String> warnings;
 
     public ModelDefinition(
@@ -39,6 +42,9 @@ public final class ModelDefinition {
             String modelDirectory,
             String manifestPath,
             String previewTexturePath,
+            boolean converterApplied,
+            String converterName,
+            List<String> runtimeArtifacts,
             List<String> warnings
     ) {
         this.id = Objects.requireNonNull(id, "id");
@@ -56,6 +62,9 @@ public final class ModelDefinition {
         this.modelDirectory = Objects.requireNonNull(modelDirectory, "modelDirectory");
         this.manifestPath = Objects.requireNonNull(manifestPath, "manifestPath");
         this.previewTexturePath = previewTexturePath;
+        this.converterApplied = converterApplied;
+        this.converterName = converterName == null ? "" : converterName;
+        this.runtimeArtifacts = Collections.unmodifiableList(new ArrayList<>(runtimeArtifacts));
         this.warnings = Collections.unmodifiableList(new ArrayList<>(warnings));
     }
 
@@ -117,6 +126,18 @@ public final class ModelDefinition {
 
     public String getPreviewTexturePath() {
         return previewTexturePath;
+    }
+
+    public boolean isConverterApplied() {
+        return converterApplied;
+    }
+
+    public String getConverterName() {
+        return converterName;
+    }
+
+    public List<String> getRuntimeArtifacts() {
+        return runtimeArtifacts;
     }
 
     public List<String> getWarnings() {
