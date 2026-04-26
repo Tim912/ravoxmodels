@@ -269,6 +269,10 @@ public final class ResourcePackService {
         return sb.toString();
     }
 
+    public String getActiveZipPath() {
+        return activeZip == null ? "" : activeZip.toAbsolutePath().toString();
+    }
+
     public long getLastBuildAt() {
         return lastBuildAt;
     }

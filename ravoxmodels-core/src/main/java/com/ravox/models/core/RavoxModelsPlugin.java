@@ -292,16 +292,19 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
     }
 
     private boolean handleStatusCommand(CommandSender sender) {
+        int modelCount = importService.getRegistry().size();
         sender.sendMessage("RavoxModels v" + getVersion());
         sender.sendMessage("License: " + licenseService.statusLine());
         sender.sendMessage("ImportDir: " + importService.getImportDirectory());
-        sender.sendMessage("Models: " + importService.getRegistry().size());
+        sender.sendMessage("Models: " + modelCount);
         sender.sendMessage("ActiveRuntimeModels: " + modelRuntime.all().size());
         sender.sendMessage("ImportQueue: " + importService.getQueuedJobs());
         sender.sendMessage("ConverterCommandEnabled: " + getConfig().getBoolean("converter.command.enabled", true));
         sender.sendMessage("BundledToolsDir: " + getDataFolder().toPath().resolve("tools"));
         sender.sendMessage("PackURL: " + resourcePackService.getActiveUrl());
         sender.sendMessage("PackSHA1: " + resourcePackService.getActiveSha1Hex());
+        sender.sendMessage("PackFile: " + resourcePackService.getActiveZipPath());
+        sender.sendMessage("PackModelCount: " + modelCount);
         sender.sendMessage("PackLastBuild: " + formatEpoch(resourcePackService.getLastBuildAt()));
         return true;
     }
@@ -505,13 +508,23 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
         String sub = args[1].toLowerCase(Locale.ROOT);
         switch (sub) {
             case "build" -> {
+                int modelCount = importService.getRegistry().size();
                 boolean built = resourcePackService.buildPack(importService.allModels());
-                sender.sendMessage(built ? "Resourcepack built." : "Resourcepack build failed.");
+                if (!built) {
+                    sender.sendMessage("Resourcepack build failed.");
+                    return true;
+                }
+                sender.sendMessage("Resourcepack built. models=" + modelCount);
+                if (modelCount == 0) {
+                    sender.sendMessage("Pack currently contains no model entries. Import at least one .glb/.fbx first.");
+                }
                 return true;
             }
             case "info" -> {
                 sender.sendMessage("PackURL: " + resourcePackService.getActiveUrl());
                 sender.sendMessage("PackSHA1: " + resourcePackService.getActiveSha1Hex());
+                sender.sendMessage("PackFile: " + resourcePackService.getActiveZipPath());
+                sender.sendMessage("PackModelCount: " + importService.getRegistry().size());
                 sender.sendMessage("LastBuild: " + formatEpoch(resourcePackService.getLastBuildAt()));
                 return true;
             }
