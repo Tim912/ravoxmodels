@@ -304,6 +304,9 @@ public final class ResourcePackService {
         String itemDefinition = "assets/" + modelNamespace + "/items/" + modelId + ".json";
         String modelJson = "assets/" + modelNamespace + "/models/item/" + modelId + ".json";
         String texturePrefix = "assets/" + modelNamespace + "/textures/item/" + modelId;
+        String frontTexture = texturePrefix + "_front.png";
+        String sideTexture = texturePrefix + "_side.png";
+        String paletteTexture = texturePrefix + "_palette.png";
         String materialDefinition = "assets/minecraft/items/" + material + ".json";
         String legacyMaterialModel = "assets/minecraft/models/item/" + material + ".json";
 
@@ -321,6 +324,9 @@ public final class ResourcePackService {
             addZipCheck(lines, zip, "PackMeta", "pack.mcmeta");
             addZipCheck(lines, zip, "ItemDefinition", itemDefinition);
             addZipCheck(lines, zip, "ModelJson", modelJson);
+            addZipCheck(lines, zip, "FrontTexture", frontTexture);
+            addZipCheck(lines, zip, "SideTexture", sideTexture);
+            addZipCheck(lines, zip, "PaletteTexture", paletteTexture);
             addZipCheck(lines, zip, "MaterialDefinition", materialDefinition);
             addZipCheck(lines, zip, "LegacyMaterialModel", legacyMaterialModel);
 

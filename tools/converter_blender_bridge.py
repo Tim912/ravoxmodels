@@ -103,8 +103,8 @@ def look_at(obj: bpy.types.Object, target: Vector) -> None:
 def setup_render_scene() -> None:
     scene = bpy.context.scene
     scene.render.film_transparent = True
-    scene.render.resolution_x = 768
-    scene.render.resolution_y = 768
+    scene.render.resolution_x = 512
+    scene.render.resolution_y = 512
     scene.render.image_settings.file_format = "PNG"
     scene.render.image_settings.color_mode = "RGBA"
     scene.view_settings.view_transform = "Standard"
