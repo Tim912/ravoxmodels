@@ -154,6 +154,7 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
             case "transition" -> handleTransitionCommand(sender, args);
             case "state" -> handleStateCommand(sender, args);
             case "despawn" -> handleDespawnCommand(sender, args);
+            case "kill" -> handleKillCommand(sender, args);
             case "list" -> handleListCommand(sender);
             case "pack" -> handlePackCommand(sender, args);
             case "license" -> handleLicenseCommand(sender, args);
@@ -171,8 +172,8 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
         }
         if (args.length == 1) {
             return filterStartsWith(
-                    args[0],
-                    List.of("help", "status", "import", "import-history", "models", "model", "spawn", "play", "transition", "state", "despawn", "list", "pack", "license")
+                args[0],
+                    List.of("help", "status", "import", "import-history", "models", "model", "spawn", "play", "transition", "state", "despawn", "kill", "list", "pack", "license")
             );
         }
         if (args.length == 2 && "import".equalsIgnoreCase(args[0])) {
@@ -195,6 +196,12 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
         }
         if (args.length == 2 && ("play".equalsIgnoreCase(args[0]) || "transition".equalsIgnoreCase(args[0]) || "state".equalsIgnoreCase(args[0]) || "despawn".equalsIgnoreCase(args[0]))) {
             return filterStartsWith(args[1], activeHandleIds());
+        }
+        if (args.length == 2 && "kill".equalsIgnoreCase(args[0])) {
+            List<String> candidates = new ArrayList<>();
+            candidates.add("*");
+            candidates.addAll(activeHandleIds());
+            return filterStartsWith(args[1], candidates);
         }
         if (args.length == 3 && "pack".equalsIgnoreCase(args[0]) && "force".equalsIgnoreCase(args[1])) {
             List<String> players = new ArrayList<>();
@@ -483,6 +490,31 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
         return true;
     }
 
+    private boolean handleKillCommand(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("Usage: /ravoxmodels kill <handleUuid|*>");
+            return true;
+        }
+        if ("*".equals(args[1])) {
+            List<ActiveModel> active = new ArrayList<>(modelRuntime.all());
+            int removed = 0;
+            for (ActiveModel model : active) {
+                if (despawn(model.getHandle())) {
+                    removed++;
+                }
+            }
+            sender.sendMessage("Killed " + removed + " model(s).");
+            return true;
+        }
+        UUID id = parseUuid(args[1], sender);
+        if (id == null) {
+            return true;
+        }
+        boolean ok = despawn(new ModelHandle(id));
+        sender.sendMessage(ok ? "Killed." : "Unknown handle.");
+        return true;
+    }
+
     private boolean handleListCommand(CommandSender sender) {
         Collection<ActiveModel> active = modelRuntime.all();
         if (active.isEmpty()) {
@@ -601,6 +633,7 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
         sender.sendMessage("/ravoxmodels transition <handleUuid> <fromKey> <toKey> <blendMs> [loop]");
         sender.sendMessage("/ravoxmodels state <handleUuid> <state>");
         sender.sendMessage("/ravoxmodels despawn <handleUuid>");
+        sender.sendMessage("/ravoxmodels kill <handleUuid|*>");
         sender.sendMessage("/ravoxmodels list");
         sender.sendMessage("/ravoxmodels pack <build|info|force>");
         sender.sendMessage("/ravoxmodels license <status|refresh>");
