@@ -37,6 +37,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.stream.Stream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -74,7 +75,7 @@ public final class ImportService {
 
     public ImportService(JavaPlugin plugin, FileConfiguration config) throws IOException {
         this.plugin = plugin;
-        this.importDirectory = resolvePath(plugin.getDataFolder().toPath(), config.getString("import.directory", "plugins/RavoxModels/import"));
+        this.importDirectory = resolvePath(plugin.getDataFolder().toPath(), config.getString("import.directory", "import"));
         this.modelsDirectory = plugin.getDataFolder().toPath().resolve("models");
         this.acceptedExtensions = readExtensions(config.getStringList("import.accepted_extensions"));
         this.limits = ImportLimits.fromConfig(
@@ -86,7 +87,7 @@ public final class ImportService {
         this.autoWatch = config.getBoolean("import.auto_watch", true);
         this.converterPipeline = new ConverterPipeline(plugin, config);
 
-        Files.createDirectories(importDirectory);
+        ensureImportDirectory();
         Files.createDirectories(modelsDirectory);
 
         this.registry = new ModelRegistry(modelsDirectory.resolve("index.json"));
@@ -133,6 +134,10 @@ public final class ImportService {
     }
 
     public boolean queue(String filename) {
+        if (!ensureImportDirectory()) {
+            addHistory(new ImportRecord(now(), ImportStatus.FAILED, filename, null, "Import directory is not available."));
+            return false;
+        }
         Path source = importDirectory.resolve(filename).normalize();
         if (!source.startsWith(importDirectory) || !Files.exists(source) || !Files.isRegularFile(source)) {
             addHistory(new ImportRecord(now(), ImportStatus.FAILED, filename, null, "File not found in import directory."));
@@ -148,6 +153,27 @@ public final class ImportService {
         addHistory(new ImportRecord(now(), ImportStatus.ACCEPTED, filename, null, "Queued"));
         importerExecutor.submit(() -> processImport(source));
         return true;
+    }
+
+    public List<String> listImportCandidates(String prefix, int limit) {
+        if (!ensureImportDirectory()) {
+            return List.of();
+        }
+        String normalizedPrefix = prefix == null ? "" : prefix.toLowerCase(Locale.ROOT);
+        int normalizedLimit = Math.max(1, Math.min(100, limit));
+        List<String> out = new ArrayList<>();
+        try (Stream<Path> stream = Files.list(importDirectory)) {
+            stream.filter(Files::isRegularFile)
+                    .map(path -> path.getFileName().toString())
+                    .filter(name -> acceptedExtensions.contains(extension(name)))
+                    .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(normalizedPrefix))
+                    .sorted(String::compareToIgnoreCase)
+                    .limit(normalizedLimit)
+                    .forEach(out::add);
+        } catch (IOException ignored) {
+            return List.of();
+        }
+        return out;
     }
 
     public List<ImportRecord> recentHistory(int limit) {
@@ -336,21 +362,40 @@ public final class ImportService {
     }
 
     private static Path resolvePath(Path dataFolder, String configuredPath) {
-        Path configured = Path.of(configuredPath);
+        String raw = configuredPath == null ? "" : configuredPath.trim();
+        if (raw.isEmpty()) {
+            return dataFolder.resolve("import").normalize();
+        }
+        Path configured = Path.of(raw);
         if (configured.isAbsolute()) {
-            return configured;
+            return configured.normalize();
         }
-        Path pluginsFolder = dataFolder.getParent();
-        if (pluginsFolder == null) {
-            return dataFolder.resolve(configuredPath);
+
+        String normalizedRaw = raw.replace('\\', '/');
+        if (normalizedRaw.startsWith("./")) {
+            normalizedRaw = normalizedRaw.substring(2);
+            configured = Path.of(normalizedRaw);
         }
-        if (configuredPath.startsWith("plugins/") || configuredPath.startsWith("plugins\\")) {
-            Path serverRoot = pluginsFolder.getParent();
-            if (serverRoot != null) {
-                return serverRoot.resolve(configuredPath);
+        if (normalizedRaw.startsWith("plugins/")) {
+            Path pluginsFolder = dataFolder.getParent();
+            if (pluginsFolder != null) {
+                Path serverRoot = pluginsFolder.getParent();
+                if (serverRoot != null) {
+                    return serverRoot.resolve(configured).normalize();
+                }
             }
         }
-        return pluginsFolder.resolve(configuredPath);
+        return dataFolder.resolve(configured).normalize();
+    }
+
+    private boolean ensureImportDirectory() {
+        try {
+            Files.createDirectories(importDirectory);
+            return true;
+        } catch (IOException ex) {
+            plugin.getLogger().warning("Could not create import directory " + importDirectory + ": " + ex.getMessage());
+            return false;
+        }
     }
 
     private static String extension(String filename) {

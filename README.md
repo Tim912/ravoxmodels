@@ -97,6 +97,8 @@ Server deployment:
 - `license status`
 - `license refresh`
 
+Default import folder: `plugins/RavoxModels/import`
+
 ## API quick example
 
 ```java

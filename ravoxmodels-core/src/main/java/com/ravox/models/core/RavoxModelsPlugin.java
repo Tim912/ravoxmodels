@@ -175,6 +175,9 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
                     List.of("help", "status", "import", "import-history", "models", "model", "spawn", "play", "transition", "state", "despawn", "list", "pack", "license")
             );
         }
+        if (args.length == 2 && "import".equalsIgnoreCase(args[0])) {
+            return importService.listImportCandidates(args[1], 40);
+        }
         if (args.length == 2 && "pack".equalsIgnoreCase(args[0])) {
             return filterStartsWith(args[1], List.of("build", "info", "force"));
         }

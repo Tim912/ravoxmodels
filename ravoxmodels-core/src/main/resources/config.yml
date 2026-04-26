@@ -4,7 +4,7 @@ namespace:
   prefix: rvxmodels
 
 import:
-  directory: plugins/RavoxModels/import
+  directory: import
   auto_watch: true
   rebuild_pack_on_success: true
   force_pack_after_build: false
