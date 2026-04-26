@@ -12,6 +12,7 @@ import com.ravox.models.core.resourcepack.ResourcePackService;
 import com.ravox.models.core.runtime.ActiveModel;
 import com.ravox.models.core.runtime.ModelRuntime;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -35,6 +36,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, TabCompleter {
+    private static final String PREFIX = ChatColor.DARK_AQUA + "[RavoxModels] " + ChatColor.RESET;
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
             .withZone(ZoneId.systemDefault());
 
@@ -130,7 +132,7 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
             return false;
         }
         if (!sender.hasPermission("ravoxmodels.admin")) {
-            sender.sendMessage("Missing permission: ravoxmodels.admin");
+            msg(sender, "Missing permission: ravoxmodels.admin");
             return true;
         }
         if (args.length == 0) {
@@ -159,7 +161,7 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
             case "pack" -> handlePackCommand(sender, args);
             case "license" -> handleLicenseCommand(sender, args);
             default -> {
-                sender.sendMessage("Unknown subcommand. Use /ravoxmodels help");
+                msg(sender, "Unknown subcommand. Use /ravoxmodels help");
                 yield true;
             }
         };
@@ -303,30 +305,30 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
 
     private boolean handleStatusCommand(CommandSender sender) {
         int modelCount = importService.getRegistry().size();
-        sender.sendMessage("RavoxModels v" + getVersion());
-        sender.sendMessage("License: " + licenseService.statusLine());
-        sender.sendMessage("ImportDir: " + importService.getImportDirectory());
-        sender.sendMessage("Models: " + modelCount);
-        sender.sendMessage("ActiveRuntimeModels: " + modelRuntime.all().size());
-        sender.sendMessage("ImportQueue: " + importService.getQueuedJobs());
-        sender.sendMessage("ConverterCommandEnabled: " + getConfig().getBoolean("converter.command.enabled", true));
-        sender.sendMessage("BundledToolsDir: " + getDataFolder().toPath().resolve("tools"));
-        sender.sendMessage("PackNamespace: " + resourcePackService.getModelNamespace());
-        sender.sendMessage("PackURL: " + resourcePackService.getActiveUrl());
-        sender.sendMessage("PackSHA1: " + resourcePackService.getActiveSha1Hex());
-        sender.sendMessage("PackFile: " + resourcePackService.getActiveZipPath());
-        sender.sendMessage("PackModelCount: " + modelCount);
-        sender.sendMessage("PackLastBuild: " + formatEpoch(resourcePackService.getLastBuildAt()));
+        msg(sender, "RavoxModels v" + getVersion());
+        msg(sender, "License: " + licenseService.statusLine());
+        msg(sender, "ImportDir: " + importService.getImportDirectory());
+        msg(sender, "Models: " + modelCount);
+        msg(sender, "ActiveRuntimeModels: " + modelRuntime.all().size());
+        msg(sender, "ImportQueue: " + importService.getQueuedJobs());
+        msg(sender, "ConverterCommandEnabled: " + getConfig().getBoolean("converter.command.enabled", true));
+        msg(sender, "BundledToolsDir: " + getDataFolder().toPath().resolve("tools"));
+        msg(sender, "PackNamespace: " + resourcePackService.getModelNamespace());
+        msg(sender, "PackURL: " + resourcePackService.getActiveUrl());
+        msg(sender, "PackSHA1: " + resourcePackService.getActiveSha1Hex());
+        msg(sender, "PackFile: " + resourcePackService.getActiveZipPath());
+        msg(sender, "PackModelCount: " + modelCount);
+        msg(sender, "PackLastBuild: " + formatEpoch(resourcePackService.getLastBuildAt()));
         return true;
     }
 
     private boolean handleImportCommand(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage("Usage: /ravoxmodels import <filename.glb|filename.fbx>");
+            msg(sender, "Usage: /ravoxmodels import <filename.glb|filename.fbx>");
             return true;
         }
         boolean queued = queueImport(args[1]);
-        sender.sendMessage(queued
+        msg(sender, queued
                 ? "Import queued: " + args[1]
                 : "Import rejected. Check file path/extension in " + importService.getImportDirectory());
         return true;
@@ -342,12 +344,12 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
         }
         List<ImportRecord> history = importService.recentHistory(limit);
         if (history.isEmpty()) {
-            sender.sendMessage("No import history.");
+            msg(sender, "No import history.");
             return true;
         }
-        sender.sendMessage("Recent imports:");
+        msg(sender, "Recent imports:");
         for (ImportRecord record : history) {
-            sender.sendMessage("- " + formatEpoch(record.getTimestampEpochMillis())
+            msg(sender, "- " + formatEpoch(record.getTimestampEpochMillis())
                     + " [" + record.getStatus() + "] "
                     + record.getSourceFile()
                     + (record.getModelId() == null ? "" : " -> " + record.getModelId())
@@ -359,14 +361,14 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
     private boolean handleModelsCommand(CommandSender sender) {
         Collection<ModelDefinition> models = importService.allModels();
         if (models.isEmpty()) {
-            sender.sendMessage("No imported models.");
+            msg(sender, "No imported models.");
             return true;
         }
         List<ModelDefinition> sorted = new ArrayList<>(models);
         sorted.sort(Comparator.comparing(ModelDefinition::getId));
-        sender.sendMessage("Imported models (" + sorted.size() + "):");
+        msg(sender, "Imported models (" + sorted.size() + "):");
         for (ModelDefinition model : sorted) {
-            sender.sendMessage("- " + model.getId()
+            msg(sender, "- " + model.getId()
                     + " format=" + model.getFormat()
                     + " cmd=" + model.getCustomModelData()
                     + " anims=" + model.getAnimationCount()
@@ -379,59 +381,59 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
 
     private boolean handleModelCommand(CommandSender sender, String[] args) {
         if (args.length < 3 || !"info".equalsIgnoreCase(args[1])) {
-            sender.sendMessage("Usage: /ravoxmodels model info <modelId>");
+            msg(sender, "Usage: /ravoxmodels model info <modelId>");
             return true;
         }
         String id = args[2].toLowerCase(Locale.ROOT);
         ModelDefinition model = importService.getRegistry().find(id).orElse(null);
         if (model == null) {
-            sender.sendMessage("Model not found: " + id);
+            msg(sender, "Model not found: " + id);
             return true;
         }
-        sender.sendMessage("Model: " + model.getId());
-        sender.sendMessage("Format: " + model.getFormat());
-        sender.sendMessage("Source: " + model.getSourceFilename() + " sha1=" + model.getSourceSha1());
-        sender.sendMessage("ImportedAt: " + formatEpoch(model.getImportedAtEpochMillis()));
-        sender.sendMessage("Triangles: " + model.getEstimatedTriangles() + ", Bones: " + model.getSkinBones());
-        sender.sendMessage("TextureMax: " + model.getMaxTextureSize() + ", Animations: " + model.getAnimationCount());
-        sender.sendMessage("AnimationKeys: " + String.join(", ", model.getAnimationKeys()));
-        sender.sendMessage("Material/CMD: " + model.getMaterialKey() + "/" + model.getCustomModelData());
-        sender.sendMessage("Converter: " + (model.isConverterApplied() ? model.getConverterName() : "none"));
-        sender.sendMessage("RuntimeArtifacts: " + String.join(", ", model.getRuntimeArtifacts()));
-        sender.sendMessage("Warnings: " + String.join(" | ", model.getWarnings()));
+        msg(sender, "Model: " + model.getId());
+        msg(sender, "Format: " + model.getFormat());
+        msg(sender, "Source: " + model.getSourceFilename() + " sha1=" + model.getSourceSha1());
+        msg(sender, "ImportedAt: " + formatEpoch(model.getImportedAtEpochMillis()));
+        msg(sender, "Triangles: " + model.getEstimatedTriangles() + ", Bones: " + model.getSkinBones());
+        msg(sender, "TextureMax: " + model.getMaxTextureSize() + ", Animations: " + model.getAnimationCount());
+        msg(sender, "AnimationKeys: " + String.join(", ", model.getAnimationKeys()));
+        msg(sender, "Material/CMD: " + model.getMaterialKey() + "/" + model.getCustomModelData());
+        msg(sender, "Converter: " + (model.isConverterApplied() ? model.getConverterName() : "none"));
+        msg(sender, "RuntimeArtifacts: " + String.join(", ", model.getRuntimeArtifacts()));
+        msg(sender, "Warnings: " + String.join(" | ", model.getWarnings()));
         return true;
     }
 
     private boolean handleSpawnCommand(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage("Usage: /ravoxmodels spawn <modelId> [player]");
+            msg(sender, "Usage: /ravoxmodels spawn <modelId> [player]");
             return true;
         }
         Player target;
         if (args.length >= 3) {
             target = Bukkit.getPlayerExact(args[2]);
             if (target == null) {
-                sender.sendMessage("Player not found: " + args[2]);
+                msg(sender, "Player not found: " + args[2]);
                 return true;
             }
         } else if (sender instanceof Player player) {
             target = player;
         } else {
-            sender.sendMessage("Console usage: /ravoxmodels spawn <modelId> <player>");
+            msg(sender, "Console usage: /ravoxmodels spawn <modelId> <player>");
             return true;
         }
         ModelHandle handle = spawnModel(args[1], target.getLocation());
         if (handle == null) {
-            sender.sendMessage("Spawn failed. Unknown model or invalid world.");
+            msg(sender, "Spawn failed. Unknown model or invalid world.");
             return true;
         }
-        sender.sendMessage("Spawned " + args[1] + " handle=" + handle.id());
+        msg(sender, "Spawned " + args[1] + " handle=" + handle.id());
         return true;
     }
 
     private boolean handlePlayCommand(CommandSender sender, String[] args) {
         if (args.length < 3) {
-            sender.sendMessage("Usage: /ravoxmodels play <handleUuid> <animationKey> [loop]");
+            msg(sender, "Usage: /ravoxmodels play <handleUuid> <animationKey> [loop]");
             return true;
         }
         UUID id = parseUuid(args[1], sender);
@@ -440,13 +442,13 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
         }
         boolean loop = args.length > 3 && Boolean.parseBoolean(args[3]);
         boolean ok = playAnimation(new ModelHandle(id), args[2], loop);
-        sender.sendMessage(ok ? "Animation playing." : "Unknown handle.");
+        msg(sender, ok ? "Animation playing." : "Unknown handle.");
         return true;
     }
 
     private boolean handleTransitionCommand(CommandSender sender, String[] args) {
         if (args.length < 5) {
-            sender.sendMessage("Usage: /ravoxmodels transition <handleUuid> <fromKey> <toKey> <blendMs> [loop]");
+            msg(sender, "Usage: /ravoxmodels transition <handleUuid> <fromKey> <toKey> <blendMs> [loop]");
             return true;
         }
         UUID id = parseUuid(args[1], sender);
@@ -457,18 +459,18 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
         try {
             blend = Integer.parseInt(args[4]);
         } catch (NumberFormatException ex) {
-            sender.sendMessage("blendMs must be an integer.");
+            msg(sender, "blendMs must be an integer.");
             return true;
         }
         boolean loop = args.length > 5 && Boolean.parseBoolean(args[5]);
         boolean ok = transitionAnimation(new ModelHandle(id), args[2], args[3], blend, loop);
-        sender.sendMessage(ok ? "Transition started." : "Unknown handle.");
+        msg(sender, ok ? "Transition started." : "Unknown handle.");
         return true;
     }
 
     private boolean handleStateCommand(CommandSender sender, String[] args) {
         if (args.length < 3) {
-            sender.sendMessage("Usage: /ravoxmodels state <handleUuid> <state>");
+            msg(sender, "Usage: /ravoxmodels state <handleUuid> <state>");
             return true;
         }
         UUID id = parseUuid(args[1], sender);
@@ -476,13 +478,13 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
             return true;
         }
         boolean ok = setState(new ModelHandle(id), args[2]);
-        sender.sendMessage(ok ? "State updated." : "Unknown handle.");
+        msg(sender, ok ? "State updated." : "Unknown handle.");
         return true;
     }
 
     private boolean handleDespawnCommand(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage("Usage: /ravoxmodels despawn <handleUuid>");
+            msg(sender, "Usage: /ravoxmodels despawn <handleUuid>");
             return true;
         }
         UUID id = parseUuid(args[1], sender);
@@ -490,13 +492,13 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
             return true;
         }
         boolean ok = despawn(new ModelHandle(id));
-        sender.sendMessage(ok ? "Despawned." : "Unknown handle.");
+        msg(sender, ok ? "Despawned." : "Unknown handle.");
         return true;
     }
 
     private boolean handleKillCommand(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage("Usage: /ravoxmodels kill <handleUuid|*>");
+            msg(sender, "Usage: /ravoxmodels kill <handleUuid|*>");
             return true;
         }
         if ("*".equals(args[1])) {
@@ -507,7 +509,7 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
                     removed++;
                 }
             }
-            sender.sendMessage("Killed " + removed + " model(s).");
+            msg(sender, "Killed " + removed + " model(s).");
             return true;
         }
         UUID id = parseUuid(args[1], sender);
@@ -515,19 +517,19 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
             return true;
         }
         boolean ok = despawn(new ModelHandle(id));
-        sender.sendMessage(ok ? "Killed." : "Unknown handle.");
+        msg(sender, ok ? "Killed." : "Unknown handle.");
         return true;
     }
 
     private boolean handleListCommand(CommandSender sender) {
         Collection<ActiveModel> active = modelRuntime.all();
         if (active.isEmpty()) {
-            sender.sendMessage("No active runtime models.");
+            msg(sender, "No active runtime models.");
             return true;
         }
-        sender.sendMessage("Active runtime models (" + active.size() + "):");
+        msg(sender, "Active runtime models (" + active.size() + "):");
         for (ActiveModel model : active) {
-            sender.sendMessage("- " + model.getHandle().id()
+            msg(sender, "- " + model.getHandle().id()
                     + " model=" + model.getModelId()
                     + " anim=" + model.getCurrentAnimation()
                     + " state=" + model.getState()
@@ -538,7 +540,7 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
 
     private boolean handlePackCommand(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage("Usage: /ravoxmodels pack <build|info|force>");
+            msg(sender, "Usage: /ravoxmodels pack <build|info|force>");
             return true;
         }
         String sub = args[1].toLowerCase(Locale.ROOT);
@@ -547,56 +549,56 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
                 int modelCount = importService.getRegistry().size();
                 boolean built = resourcePackService.buildPack(importService.allModels());
                 if (!built) {
-                    sender.sendMessage("Resourcepack build failed.");
+                    msg(sender, "Resourcepack build failed.");
                     return true;
                 }
-                sender.sendMessage("Resourcepack built. models=" + modelCount);
+                msg(sender, "Resourcepack built. models=" + modelCount);
                 if (modelCount == 0) {
-                    sender.sendMessage("Pack currently contains no model entries. Import at least one .glb/.fbx first.");
+                    msg(sender, "Pack currently contains no model entries. Import at least one .glb/.fbx first.");
                 }
                 return true;
             }
             case "info" -> {
-                sender.sendMessage("PackURL: " + resourcePackService.getActiveUrl());
-                sender.sendMessage("PackSHA1: " + resourcePackService.getActiveSha1Hex());
-                sender.sendMessage("PackFile: " + resourcePackService.getActiveZipPath());
-                sender.sendMessage("PackModelCount: " + importService.getRegistry().size());
-                sender.sendMessage("LastBuild: " + formatEpoch(resourcePackService.getLastBuildAt()));
+                msg(sender, "PackURL: " + resourcePackService.getActiveUrl());
+                msg(sender, "PackSHA1: " + resourcePackService.getActiveSha1Hex());
+                msg(sender, "PackFile: " + resourcePackService.getActiveZipPath());
+                msg(sender, "PackModelCount: " + importService.getRegistry().size());
+                msg(sender, "LastBuild: " + formatEpoch(resourcePackService.getLastBuildAt()));
                 return true;
             }
             case "force" -> {
                 if (args.length < 3) {
-                    sender.sendMessage("Usage: /ravoxmodels pack force <player|*>");
+                    msg(sender, "Usage: /ravoxmodels pack force <player|*>");
                     return true;
                 }
                 if ("*".equals(args[2])) {
                     int count = resourcePackService.applyToAll();
-                    sender.sendMessage("Pack sent to " + count + " player(s).");
+                    msg(sender, "Pack sent to " + count + " player(s).");
                     return true;
                 }
                 boolean ok = forceResourcePack(args[2]);
-                sender.sendMessage(ok ? "Pack sent to " + args[2] : "Player not found or no active pack.");
+                msg(sender, ok ? "Pack sent to " + args[2] : "Player not found or no active pack.");
                 return true;
             }
             case "diagnose" -> {
                 if (args.length < 3) {
-                    sender.sendMessage("Usage: /ravoxmodels pack diagnose <modelId>");
+                    msg(sender, "Usage: /ravoxmodels pack diagnose <modelId>");
                     return true;
                 }
                 String id = args[2].toLowerCase(Locale.ROOT);
                 ModelDefinition model = importService.getRegistry().find(id).orElse(null);
                 if (model == null) {
-                    sender.sendMessage("Model not found: " + id);
+                    msg(sender, "Model not found: " + id);
                     return true;
                 }
-                sender.sendMessage("Pack diagnose:");
+                msg(sender, "Pack diagnose:");
                 for (String line : resourcePackService.diagnoseModel(model)) {
-                    sender.sendMessage("- " + line);
+                    msg(sender, "- " + line);
                 }
                 return true;
             }
             default -> {
-                sender.sendMessage("Unknown pack subcommand.");
+                msg(sender, "Unknown pack subcommand.");
                 return true;
             }
         }
@@ -604,22 +606,22 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
 
     private boolean handleLicenseCommand(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage("Usage: /ravoxmodels license <status|refresh>");
+            msg(sender, "Usage: /ravoxmodels license <status|refresh>");
             return true;
         }
         String sub = args[1].toLowerCase(Locale.ROOT);
         switch (sub) {
             case "status" -> {
-                sender.sendMessage(licenseService.statusLine());
+                msg(sender, licenseService.statusLine());
                 return true;
             }
             case "refresh" -> {
                 boolean ok = licenseService.refreshNow();
-                sender.sendMessage(ok ? "License refresh successful." : "License refresh failed.");
+                msg(sender, ok ? "License refresh successful." : "License refresh failed.");
                 return true;
             }
             default -> {
-                sender.sendMessage("Unknown license subcommand.");
+                msg(sender, "Unknown license subcommand.");
                 return true;
             }
         }
@@ -642,29 +644,79 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
     }
 
     private void sendHelp(CommandSender sender) {
-        sender.sendMessage("RavoxModels v" + getVersion());
-        sender.sendMessage("/ravoxmodels help");
-        sender.sendMessage("/ravoxmodels status");
-        sender.sendMessage("/ravoxmodels import <filename>");
-        sender.sendMessage("/ravoxmodels import-history [count]");
-        sender.sendMessage("/ravoxmodels models");
-        sender.sendMessage("/ravoxmodels model info <id>");
-        sender.sendMessage("/ravoxmodels spawn <modelId> [player]");
-        sender.sendMessage("/ravoxmodels play <handleUuid> <animationKey> [loop]");
-        sender.sendMessage("/ravoxmodels transition <handleUuid> <fromKey> <toKey> <blendMs> [loop]");
-        sender.sendMessage("/ravoxmodels state <handleUuid> <state>");
-        sender.sendMessage("/ravoxmodels despawn <handleUuid>");
-        sender.sendMessage("/ravoxmodels kill <handleUuid|*>");
-        sender.sendMessage("/ravoxmodels list");
-        sender.sendMessage("/ravoxmodels pack <build|info|force|diagnose>");
-        sender.sendMessage("/ravoxmodels license <status|refresh>");
+        msg(sender, "RavoxModels v" + getVersion());
+        msg(sender, "/ravoxmodels help");
+        msg(sender, "/ravoxmodels status");
+        msg(sender, "/ravoxmodels import <filename>");
+        msg(sender, "/ravoxmodels import-history [count]");
+        msg(sender, "/ravoxmodels models");
+        msg(sender, "/ravoxmodels model info <id>");
+        msg(sender, "/ravoxmodels spawn <modelId> [player]");
+        msg(sender, "/ravoxmodels play <handleUuid> <animationKey> [loop]");
+        msg(sender, "/ravoxmodels transition <handleUuid> <fromKey> <toKey> <blendMs> [loop]");
+        msg(sender, "/ravoxmodels state <handleUuid> <state>");
+        msg(sender, "/ravoxmodels despawn <handleUuid>");
+        msg(sender, "/ravoxmodels kill <handleUuid|*>");
+        msg(sender, "/ravoxmodels list");
+        msg(sender, "/ravoxmodels pack <build|info|force|diagnose>");
+        msg(sender, "/ravoxmodels license <status|refresh>");
+    }
+
+    private static void msg(CommandSender sender, String raw) {
+        if (raw == null) {
+            return;
+        }
+        ChatColor tone = toneFor(raw);
+        sender.sendMessage(PREFIX + tone + raw);
+    }
+
+    private static ChatColor toneFor(String message) {
+        String normalized = message.toLowerCase(Locale.ROOT);
+        if (normalized.startsWith("usage:")
+                || normalized.startsWith("console usage:")
+                || normalized.startsWith("/ravoxmodels")) {
+            return ChatColor.YELLOW;
+        }
+        if (normalized.contains("missing permission")
+                || normalized.contains("unknown")
+                || normalized.contains("invalid")
+                || normalized.contains("not found")
+                || normalized.contains("failed")
+                || normalized.contains("timed out")
+                || normalized.contains("error")) {
+            return ChatColor.RED;
+        }
+        if (normalized.contains("queued")
+                || normalized.contains("successful")
+                || normalized.startsWith("spawned")
+                || normalized.startsWith("killed")
+                || normalized.startsWith("despawned")
+                || normalized.startsWith("state updated")
+                || normalized.startsWith("animation playing")
+                || normalized.startsWith("transition started")
+                || normalized.startsWith("resourcepack built")
+                || normalized.startsWith("pack sent")) {
+            return ChatColor.GREEN;
+        }
+        if (normalized.startsWith("ravoxmodels v")
+                || normalized.endsWith(":")
+                || normalized.startsWith("imported models")
+                || normalized.startsWith("active runtime models")
+                || normalized.startsWith("recent imports")
+                || normalized.startsWith("pack diagnose")) {
+            return ChatColor.AQUA;
+        }
+        if (normalized.startsWith("- ")) {
+            return ChatColor.GRAY;
+        }
+        return ChatColor.WHITE;
     }
 
     private static UUID parseUuid(String raw, CommandSender sender) {
         try {
             return UUID.fromString(raw);
         } catch (IllegalArgumentException ex) {
-            sender.sendMessage("Invalid UUID: " + raw);
+            msg(sender, "Invalid UUID: " + raw);
             return null;
         }
     }
@@ -699,3 +751,4 @@ public class RavoxModelsPlugin extends JavaPlugin implements RavoxModelsApi, Tab
         return out;
     }
 }
+
