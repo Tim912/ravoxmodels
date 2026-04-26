@@ -10,12 +10,14 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.components.CustomModelDataComponent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -123,12 +125,22 @@ public final class ModelRuntime {
 
     private ItemStack createDisplayItem(String materialKey, int customModelData) {
         Material material = Material.matchMaterial(materialKey);
+        if (material == null && materialKey != null) {
+            int separator = materialKey.indexOf(':');
+            if (separator >= 0 && separator + 1 < materialKey.length()) {
+                material = Material.matchMaterial(materialKey.substring(separator + 1));
+            }
+        }
         if (material == null || material.isAir()) {
             material = Material.STICK;
         }
         ItemStack stack = new ItemStack(material);
         ItemMeta meta = stack.getItemMeta();
         if (meta != null) {
+            CustomModelDataComponent component = meta.getCustomModelDataComponent();
+            component.setFloats(List.of((float) customModelData));
+            meta.setCustomModelDataComponent(component);
+            // Keep legacy integer in sync for older client/tooling compatibility.
             meta.setCustomModelData(customModelData);
             stack.setItemMeta(meta);
         }

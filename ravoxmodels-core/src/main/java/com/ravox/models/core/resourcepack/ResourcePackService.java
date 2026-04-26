@@ -286,35 +286,39 @@ public final class ResourcePackService {
     private void writeModelEntries(Path tempDir, Iterable<ModelDefinition> models) throws IOException {
         Path rvxModelDir = tempDir.resolve("assets/rvxmodels/models/item");
         Path rvxTextureDir = tempDir.resolve("assets/rvxmodels/textures/item");
-        Path mcModelDir = tempDir.resolve("assets/minecraft/models/item");
+        Path mcLegacyModelDir = tempDir.resolve("assets/minecraft/models/item");
+        Path mcItemDefinitionDir = tempDir.resolve("assets/minecraft/items");
         Files.createDirectories(rvxModelDir);
         Files.createDirectories(rvxTextureDir);
-        Files.createDirectories(mcModelDir);
+        Files.createDirectories(mcLegacyModelDir);
+        Files.createDirectories(mcItemDefinitionDir);
 
         Map<String, List<ModelDefinition>> byMaterial = new HashMap<>();
         for (ModelDefinition model : models) {
-            byMaterial.computeIfAbsent(model.getMaterialKey().toLowerCase(Locale.ROOT), ignored -> new ArrayList<>()).add(model);
+            String materialAssetKey = normalizeMaterialAssetKey(model.getMaterialKey());
+            byMaterial.computeIfAbsent(materialAssetKey, ignored -> new ArrayList<>()).add(model);
             writeModelJson(rvxModelDir.resolve(model.getId() + ".json"), model.getId());
             writeTexture(rvxTextureDir.resolve(model.getId() + ".png"), model);
         }
         for (Map.Entry<String, List<ModelDefinition>> entry : byMaterial.entrySet()) {
             entry.getValue().sort(Comparator.comparingInt(ModelDefinition::getCustomModelData));
-            writeMaterialOverrides(mcModelDir.resolve(entry.getKey() + ".json"), entry.getKey(), entry.getValue());
+            writeLegacyMaterialOverrides(mcLegacyModelDir.resolve(entry.getKey() + ".json"), entry.getKey(), entry.getValue());
+            writeModernItemDefinition(mcItemDefinitionDir.resolve(entry.getKey() + ".json"), entry.getKey(), entry.getValue());
         }
     }
 
     private void writeModelJson(Path path, String modelId) throws IOException {
         Map<String, Object> root = new HashMap<>();
-        root.put("parent", "item/generated");
+        root.put("parent", "minecraft:item/generated");
         Map<String, String> textures = new HashMap<>();
         textures.put("layer0", "rvxmodels:item/" + modelId);
         root.put("textures", textures);
         Files.writeString(path, GSON.toJson(root), StandardCharsets.UTF_8);
     }
 
-    private void writeMaterialOverrides(Path path, String material, List<ModelDefinition> models) throws IOException {
+    private void writeLegacyMaterialOverrides(Path path, String material, List<ModelDefinition> models) throws IOException {
         Map<String, Object> root = new HashMap<>();
-        root.put("parent", "item/generated");
+        root.put("parent", "minecraft:item/generated");
         Map<String, String> textures = new HashMap<>();
         textures.put("layer0", "minecraft:item/" + material);
         root.put("textures", textures);
@@ -329,6 +333,35 @@ public final class ResourcePackService {
             overrides.add(override);
         }
         root.put("overrides", overrides);
+        Files.writeString(path, GSON.toJson(root), StandardCharsets.UTF_8);
+    }
+
+    private void writeModernItemDefinition(Path path, String material, List<ModelDefinition> models) throws IOException {
+        Map<String, Object> root = new HashMap<>();
+        Map<String, Object> dispatchModel = new HashMap<>();
+        dispatchModel.put("type", "minecraft:range_dispatch");
+        dispatchModel.put("property", "minecraft:custom_model_data");
+        dispatchModel.put("index", 0);
+
+        List<Map<String, Object>> entries = new ArrayList<>();
+        for (ModelDefinition definition : models) {
+            Map<String, Object> entry = new HashMap<>();
+            entry.put("threshold", definition.getCustomModelData());
+
+            Map<String, Object> entryModel = new HashMap<>();
+            entryModel.put("type", "minecraft:model");
+            entryModel.put("model", "rvxmodels:item/" + definition.getId());
+            entry.put("model", entryModel);
+            entries.add(entry);
+        }
+        dispatchModel.put("entries", entries);
+
+        Map<String, Object> fallback = new HashMap<>();
+        fallback.put("type", "minecraft:model");
+        fallback.put("model", "minecraft:item/" + material);
+        dispatchModel.put("fallback", fallback);
+
+        root.put("model", dispatchModel);
         Files.writeString(path, GSON.toJson(root), StandardCharsets.UTF_8);
     }
 
@@ -466,6 +499,18 @@ public final class ResourcePackService {
         return lower.contains("://127.0.0.1")
                 || lower.contains("://localhost")
                 || lower.contains("://[::1]");
+    }
+
+    private static String normalizeMaterialAssetKey(String materialKey) {
+        if (materialKey == null || materialKey.isBlank()) {
+            return "stick";
+        }
+        String key = materialKey.toLowerCase(Locale.ROOT);
+        int namespaceSeparator = key.indexOf(':');
+        if (namespaceSeparator >= 0 && namespaceSeparator + 1 < key.length()) {
+            key = key.substring(namespaceSeparator + 1);
+        }
+        return key;
     }
 
     private record DeliveryState(long sentAtMillis, int downloadFailures) {

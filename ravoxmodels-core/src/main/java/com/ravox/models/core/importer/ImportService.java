@@ -48,6 +48,8 @@ import static java.nio.file.StandardWatchEventKinds.ENTRY_CREATE;
 public final class ImportService {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final int MAX_HISTORY = 100;
+    private static final int CMD_MIN = 1;
+    private static final int CMD_SAFE_MAX = 16_000_000;
 
     private final JavaPlugin plugin;
     private final Path importDirectory;
@@ -92,6 +94,7 @@ public final class ImportService {
 
         this.registry = new ModelRegistry(modelsDirectory.resolve("index.json"));
         this.registry.load();
+        normalizeExistingCustomModelData();
     }
 
     public void setSuccessCallback(Consumer<ModelDefinition> successCallback) {
@@ -263,7 +266,7 @@ public final class ImportService {
             }
 
             Path manifestPath = modelDir.resolve("manifest.json");
-            int customModelData = customModelDataFor(modelId);
+            int customModelData = customModelDataFor();
             List<String> animationKeys;
             if (!conversion.getAnimationNames().isEmpty()) {
                 animationKeys = sanitizeAnimations(conversion.getAnimationNames());
@@ -468,23 +471,88 @@ public final class ImportService {
         return out.toString();
     }
 
-    private int customModelDataFor(String modelId) {
-        int hash = modelId.hashCode();
-        if (hash == Integer.MIN_VALUE) {
-            hash = 1;
-        }
-        int candidate = Math.max(1, Math.abs(hash));
+    private int customModelDataFor() {
         Set<Integer> used = new HashSet<>();
         for (ModelDefinition definition : registry.all()) {
-            used.add(definition.getCustomModelData());
-        }
-        while (used.contains(candidate)) {
-            candidate++;
-            if (candidate == Integer.MAX_VALUE) {
-                candidate = 1;
+            int value = definition.getCustomModelData();
+            if (value >= CMD_MIN && value <= CMD_SAFE_MAX) {
+                used.add(value);
             }
         }
-        return candidate;
+        return nextAvailableCustomModelData(used);
+    }
+
+    private void normalizeExistingCustomModelData() throws IOException {
+        Collection<ModelDefinition> existing = registry.all();
+        if (existing.isEmpty()) {
+            return;
+        }
+
+        List<ModelDefinition> ordered = new ArrayList<>(existing);
+        ordered.sort((a, b) -> a.getId().compareToIgnoreCase(b.getId()));
+
+        Set<Integer> used = new HashSet<>();
+        List<ModelDefinition> normalized = new ArrayList<>(ordered.size());
+        int changed = 0;
+        for (ModelDefinition definition : ordered) {
+            int current = definition.getCustomModelData();
+            boolean invalid = current < CMD_MIN || current > CMD_SAFE_MAX || used.contains(current);
+            int assigned = invalid ? nextAvailableCustomModelData(used) : current;
+            used.add(assigned);
+
+            if (assigned != current) {
+                definition = copyWithCustomModelData(definition, assigned);
+                changed++;
+            }
+            normalized.add(definition);
+        }
+
+        if (changed == 0) {
+            return;
+        }
+
+        for (ModelDefinition definition : normalized) {
+            registry.upsert(definition);
+            Path manifestPath = plugin.getDataFolder().toPath().resolve(definition.getManifestPath()).normalize();
+            if (manifestPath.startsWith(plugin.getDataFolder().toPath()) && Files.exists(manifestPath) && Files.isRegularFile(manifestPath)) {
+                writeManifest(manifestPath, definition);
+            }
+        }
+        registry.save();
+        plugin.getLogger().info("Normalized custom model data for " + changed + " model(s) to a 26.1-safe range.");
+    }
+
+    private static int nextAvailableCustomModelData(Set<Integer> used) {
+        for (int candidate = CMD_MIN; candidate <= CMD_SAFE_MAX; candidate++) {
+            if (!used.contains(candidate)) {
+                return candidate;
+            }
+        }
+        throw new IllegalStateException("No available custom model data values in safe range.");
+    }
+
+    private static ModelDefinition copyWithCustomModelData(ModelDefinition definition, int customModelData) {
+        return new ModelDefinition(
+                definition.getId(),
+                definition.getFormat(),
+                definition.getSourceFilename(),
+                definition.getSourceSha1(),
+                definition.getImportedAtEpochMillis(),
+                definition.getEstimatedTriangles(),
+                definition.getSkinBones(),
+                definition.getMaxTextureSize(),
+                definition.getAnimationCount(),
+                definition.getAnimationKeys(),
+                customModelData,
+                definition.getMaterialKey(),
+                definition.getModelDirectory(),
+                definition.getManifestPath(),
+                definition.getPreviewTexturePath(),
+                definition.isConverterApplied(),
+                definition.getConverterName(),
+                definition.getRuntimeArtifacts(),
+                definition.getWarnings()
+        );
     }
 
     private List<String> sanitizeAnimations(List<String> names) {
