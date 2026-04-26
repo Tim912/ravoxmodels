@@ -1,0 +1,13 @@
+name: RavoxModels
+main: com.ravox.models.core.RavoxModelsPlugin
+version: ${project.version}
+api-version: "1.20"
+authors: [Ravox]
+commands:
+  ravoxmodels:
+    description: RavoxModels command
+    usage: /ravoxmodels
+permissions:
+  ravoxmodels.admin:
+    description: Admin access to RavoxModels
+    default: op

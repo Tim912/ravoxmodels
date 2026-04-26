@@ -1,0 +1,18 @@
+version: 26.1
+
+import:
+  directory: plugins/RavoxModels/import
+  accepted_extensions:
+    - glb
+    - fbx
+
+resourcepack:
+  enabled: true
+  force: true
+  hosted_url: ""
+  sha1: ""
+
+limits:
+  max_triangles: 15000
+  max_bones: 32
+  max_texture_size: 2048

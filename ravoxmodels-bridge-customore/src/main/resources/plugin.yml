@@ -1,0 +1,6 @@
+name: RavoxModelsCustomOreBridge
+main: com.ravox.models.bridge.customore.CustomOreBridgePlugin
+version: ${project.version}
+api-version: "1.20"
+authors: [Ravox]
+softdepend: [RavoxModels, CustomOrePlugin]
