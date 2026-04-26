@@ -56,9 +56,9 @@ converter:
     strict_exit_code: true
     require_report: false
     # Placeholders: {input} {output} {model_id} {model_dir} {plugin_dir} {runtime_dir} {format} {namespace}
-    glb: "py -3 {converter_backend} --input {input} --output {output} --model {model_id} --format {format} --namespace {namespace} --max-elements 256 --voxel-grid 20 --palette-size 16 --strict"
+    glb: "py -3 {converter_backend} --input {input} --output {output} --model {model_id} --format {format} --namespace {namespace} --max-elements 512 --voxel-grid 24 --palette-size 24 --strict"
     # fbx can be separate command or same script with --format fbx
-    fbx: "py -3 {converter_backend} --input {input} --output {output} --model {model_id} --format {format} --namespace {namespace} --max-elements 256 --voxel-grid 20 --palette-size 16 --strict"
+    fbx: "py -3 {converter_backend} --input {input} --output {output} --model {model_id} --format {format} --namespace {namespace} --max-elements 512 --voxel-grid 24 --palette-size 24 --strict"
 
 tools:
   install_bundled_converter: true

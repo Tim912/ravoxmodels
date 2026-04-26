@@ -31,9 +31,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resourcepack", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--namespace", default="rvxmodels")
-    parser.add_argument("--max-elements", type=int, default=256)
-    parser.add_argument("--voxel-grid", type=int, default=20)
-    parser.add_argument("--palette-size", type=int, default=16)
+    parser.add_argument("--max-elements", type=int, default=512)
+    parser.add_argument("--voxel-grid", type=int, default=24)
+    parser.add_argument("--palette-size", type=int, default=24)
     return parser.parse_args(argv)
 
 
@@ -357,38 +357,10 @@ def build_element_box(
 
 def build_elements(cells: dict[tuple[int, int, int], dict[str, Any]], grid: int, palette_size: int) -> list[dict[str, Any]]:
     elements: list[dict[str, Any]] = []
-    remaining = set(cells.keys())
-
-    def same_palette(key: tuple[int, int, int], palette_index: int) -> bool:
-        return key in remaining and int(cells[key].get("palette", 0)) == palette_index
-
-    while remaining:
-        start = min(remaining)
-        x0, y0, z0 = start
-        palette_index = int(cells[start].get("palette", 0))
-
-        x1 = x0 + 1
-        while same_palette((x1, y0, z0), palette_index):
-            x1 += 1
-
-        z1 = z0 + 1
-        while all(same_palette((x, y0, z1), palette_index) for x in range(x0, x1)):
-            z1 += 1
-
-        y1 = y0 + 1
-        while all(
-            same_palette((x, y1, z), palette_index)
-            for x in range(x0, x1)
-            for z in range(z0, z1)
-        ):
-            y1 += 1
-
-        for x in range(x0, x1):
-            for y in range(y0, y1):
-                for z in range(z0, z1):
-                    remaining.discard((x, y, z))
-
-        elements.append(build_element_box((x0, y0, z0), (x1, y1, z1), palette_index, grid, palette_size))
+    for key, cell in sorted(cells.items()):
+        x, y, z = key
+        palette_index = int(cell.get("palette", 0))
+        elements.append(build_element_box((x, y, z), (x + 1, y + 1, z + 1), palette_index, grid, palette_size))
     return elements
 
 
