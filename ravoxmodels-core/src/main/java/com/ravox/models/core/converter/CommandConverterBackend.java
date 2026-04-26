@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class CommandConverterBackend implements ConverterBackend {
     private final JavaPlugin plugin;
@@ -128,7 +130,7 @@ public final class CommandConverterBackend implements ConverterBackend {
                 || raw.contains("{plugin_dir}/tools/converter_backend.py")
                 || raw.contains("{plugin_dir}\\tools\\converter_backend.py"))) {
             plugin.getLogger().info("Upgrading bundled converter command for " + format + " at runtime.");
-            normalized = defaultBundledCommand();
+            normalized = defaultBundledCommand() + extractBlenderOption(raw);
         }
         return normalizePythonLauncher(normalized);
     }
@@ -145,6 +147,14 @@ public final class CommandConverterBackend implements ConverterBackend {
                 + " --palette-size 32"
                 + " --model-mode rendered_cross"
                 + " --strict";
+    }
+
+    private static String extractBlenderOption(String raw) {
+        Matcher matcher = Pattern.compile("--blender\\s+(\"[^\"]+\"|'[^']+'|\\S+)").matcher(raw);
+        if (!matcher.find()) {
+            return "";
+        }
+        return " --blender " + matcher.group(1);
     }
 
     private ProcessBuilder processBuilderFor(String command, String shellName) {
